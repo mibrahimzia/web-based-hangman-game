@@ -255,7 +255,7 @@ def leaderboard():
                 JOIN LATERAL (
                     SELECT gs.score,gs.difficulty FROM game_sessions gs
                     WHERE gs.player_id=p.id AND gs.score IS NOT NULL
-                    ORDER BY gs.score DESC,gs.id ASC LIMIT 1
+                    ORDER BY (gs.status='playing') DESC,gs.id DESC,gs.score DESC LIMIT 1
                 ) best ON TRUE
                 ORDER BY best.score DESC,p.name ASC LIMIT 50""")
             rows = cur.fetchall()
