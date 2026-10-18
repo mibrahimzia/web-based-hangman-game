@@ -7,9 +7,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(title="EF-101 Hangman API")
-MAX_ATTEMPTS = 6
+MAX_ATTEMPTS = 8
 DIFFICULTIES = {"easy", "medium", "hard"}
 BONUS = {"easy": 0, "medium": 20, "hard": 40}
+HINTS = {"easy": "Everyday words, usually things you can see or use.", "medium": "A familiar place, object, or idea with a few more letters.", "hard": "A longer word connected to the world around you."}
 SAMPLE_WORDS = {
     "easy": ["apple", "chair", "cloud", "dream", "flame", "grape", "house", "lemon", "music", "plant", "river", "smile", "stone", "table", "water"],
     "medium": ["airport", "battery", "captain", "diamond", "evening", "freedom", "journey", "lantern", "machine", "notebook", "picture", "rainbow", "station", "thunder", "village"],
@@ -81,7 +82,7 @@ def new_game(difficulty: str = "easy"):
         conn.commit()
     finally:
         conn.close()
-    return {"session_id": session_id, "masked_word": mask_word(word, set()), "wrong_count": 0, "max_attempts": MAX_ATTEMPTS, "status": "playing"}
+    return {"session_id": session_id, "masked_word": mask_word(word, set()), "wrong_count": 0, "max_attempts": MAX_ATTEMPTS, "status": "playing", "hint": HINTS[difficulty]}
 
 @app.post("/api/guess")
 def guess(payload: GuessRequest):
