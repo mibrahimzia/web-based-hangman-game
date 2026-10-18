@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
 WORD_BANK_VERSION = "common-english-v1"
+_DB_INITIALIZED = False
 DIFFICULTIES = {"easy", "medium", "hard"}
 BONUS = {"easy": 0, "medium": 20, "hard": 40}
 HINTS = {
@@ -32,10 +33,15 @@ def get_connection():
 
 
 def init_db(conn=None):
-    """Create schema and import the curated 8k+ word bank only once per version."""
+    """Create schema and import the curated word bank once per warm server process."""
+    global _DB_INITIALIZED
     owns_connection = conn is None
     if owns_connection:
         conn = get_connection()
+    if _DB_INITIALIZED:
+        if owns_connection:
+            conn.close()
+        return
     try:
         with conn.cursor() as cur:
             cur.execute("""CREATE TABLE IF NOT EXISTS words (
@@ -78,6 +84,7 @@ def init_db(conn=None):
                 cur.execute("""INSERT INTO word_bank_meta(id,version) VALUES (1,%s)
                     ON CONFLICT(id) DO UPDATE SET version=EXCLUDED.version, imported_at=NOW()""", (WORD_BANK_VERSION,))
         conn.commit()
+        _DB_INITIALIZED = True
     except Exception:
         conn.rollback()
         raise
