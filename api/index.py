@@ -1,16 +1,19 @@
-"""FastAPI backend for the EF-101 Hangman game."""
+"""FastAPI backend for Word Hunt. Scores and player names are persisted in Neon Postgres."""
 import os
-import random
 import re
 import psycopg2
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-app = FastAPI(title="EF-101 Hangman API")
+app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
 DIFFICULTIES = {"easy", "medium", "hard"}
 BONUS = {"easy": 0, "medium": 20, "hard": 40}
-HINTS = {"easy": "Everyday words, usually things you can see or use.", "medium": "A familiar place, object, or idea with a few more letters.", "hard": "A longer word connected to the world around you."}
+HINTS = {
+    "easy": "Everyday words: familiar things, places, and actions.",
+    "medium": "A common word with a little more to uncover.",
+    "hard": "A longer word from everyday life and the world around you.",
+}
 SAMPLE_WORDS = {
     "easy": ["apple", "chair", "cloud", "dream", "flame", "grape", "house", "lemon", "music", "plant", "river", "smile", "stone", "table", "water"],
     "medium": ["airport", "battery", "captain", "diamond", "evening", "freedom", "journey", "lantern", "machine", "notebook", "picture", "rainbow", "station", "thunder", "village"],
@@ -20,64 +23,94 @@ SAMPLE_WORDS = {
 def get_connection():
     url = os.environ.get("DATABASE_URL")
     if not url:
-        raise HTTPException(status_code=503, detail="DATABASE_URL is not configured in the deployment environment.")
-    return psycopg2.connect(url)
+        raise HTTPException(status_code=503, detail="DATABASE_URL is missing from Vercel environment variables.")
+    try:
+        return psycopg2.connect(url, connect_timeout=8, sslmode="require")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not connect to Neon. Check the Vercel DATABASE_URL setting.") from exc
 
 def init_db():
-    """Initialize tables and a small starter word set; add the full course word bank in Neon."""
-    connection = get_connection()
+    """Idempotent schema setup; never inserts fake players or scores."""
+    conn = get_connection()
     try:
-        with connection.cursor() as cur:
+        with conn.cursor() as cur:
             cur.execute("""CREATE TABLE IF NOT EXISTS words (
                 id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL,
                 UNIQUE(word, difficulty))""")
+            cur.execute("""CREATE TABLE IF NOT EXISTS players (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(40) NOT NULL,
+                normalized_name VARCHAR(40) NOT NULL UNIQUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
             cur.execute("""CREATE TABLE IF NOT EXISTS game_sessions (
                 id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL,
                 guessed_letters TEXT NOT NULL DEFAULT '', wrong_count INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER)""")
+                status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER,
+                player_id INTEGER REFERENCES players(id))""")
+            cur.execute("ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS player_id INTEGER REFERENCES players(id)")
             for difficulty, words in SAMPLE_WORDS.items():
                 for word in words:
-                    cur.execute("INSERT INTO words (word, difficulty) SELECT %s, %s WHERE NOT EXISTS (SELECT 1 FROM words WHERE word=%s AND difficulty=%s)", (word, difficulty, word, difficulty))
-        connection.commit()
+                    cur.execute("""INSERT INTO words(word,difficulty)
+                        SELECT %s,%s WHERE NOT EXISTS
+                        (SELECT 1 FROM words WHERE lower(word)=lower(%s) AND difficulty=%s)""",
+                        (word, difficulty, word, difficulty))
+        conn.commit()
     finally:
-        connection.close()
+        conn.close()
 
 def mask_word(word, guessed):
     return " ".join(ch if ch in guessed else "_" for ch in word)
 
 class GuessRequest(BaseModel):
     session_id: int
-    letter: str
+    letter: str = Field(min_length=1, max_length=8)
 
 class SaveScoreRequest(BaseModel):
     session_id: int
-    player_name: str
+    player_name: str = Field(min_length=1, max_length=40)
 
 @app.get("/api/health")
 def health():
     try:
         init_db()
-        return {"ok": True, "database": "connected"}
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM words")
+                word_count = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM players")
+                player_count = cur.fetchone()[0]
+            return {"ok": True, "database": "connected", "words": word_count, "players": player_count}
+        finally:
+            conn.close()
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail="Database connection failed. Check DATABASE_URL and Neon network settings.") from exc
+        raise HTTPException(status_code=503, detail="Database setup failed. Check that the Neon database user can create/alter tables.") from exc
 
 @app.get("/api/new-game")
 def new_game(difficulty: str = "easy"):
     difficulty = difficulty.lower()
     if difficulty not in DIFFICULTIES:
-        raise HTTPException(status_code=400, detail="Choose easy, medium or hard.")
+        raise HTTPException(status_code=400, detail="Choose easy, medium, or hard.")
     init_db()
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word FROM words WHERE difficulty=%s AND ((%s='easy' AND length(word) BETWEEN 3 AND 5) OR (%s='medium' AND length(word) BETWEEN 6 AND 8) OR (%s='hard' AND length(word)>=9) OR (%s='easy' AND length(word) BETWEEN 3 AND 5)) ORDER BY RANDOM() LIMIT 1", (difficulty, difficulty, difficulty, difficulty, difficulty))
+            bounds = {"easy": (3, 5), "medium": (6, 8), "hard": (9, 30)}
+            low, high = bounds[difficulty]
+            # Preserve the existing difficulty assignment but also enforce length,
+            # and reject phrases, punctuation, and non-ASCII words for fair gameplay.
+            cur.execute("""SELECT word FROM words
+                WHERE lower(difficulty)=%s
+                  AND length(word) BETWEEN %s AND %s
+                  AND lower(word) ~ '^[a-z]+$'
+                ORDER BY RANDOM() LIMIT 1""", (difficulty, low, high))
             row = cur.fetchone()
             if not row:
-                raise HTTPException(status_code=503, detail=f"No {difficulty} words found. Add words to the Neon words table.")
-            word = re.sub(r"[^a-z]", "", row[0].lower())
-            cur.execute("INSERT INTO game_sessions (word,difficulty) VALUES (%s,%s) RETURNING id", (word, difficulty))
+                raise HTTPException(status_code=503, detail=f"No usable {difficulty} words found. Check the words table's difficulty labels and word lengths.")
+            word = row[0].lower()
+            cur.execute("INSERT INTO game_sessions(word,difficulty) VALUES (%s,%s) RETURNING id", (word, difficulty))
             session_id = cur.fetchone()[0]
         conn.commit()
     finally:
@@ -92,10 +125,10 @@ def guess(payload: GuessRequest):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word, guessed_letters, wrong_count, status FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
+            cur.execute("SELECT word,guessed_letters,wrong_count,status FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
             row = cur.fetchone()
             if not row:
-                raise HTTPException(status_code=404, detail="Game session not found.")
+                raise HTTPException(status_code=404, detail="Game session not found. Start a new round.")
             word, stored, wrong, status = row
             guessed = set(stored.split(",")) if stored else set()
             if status == "playing" and letter not in guessed:
@@ -103,7 +136,8 @@ def guess(payload: GuessRequest):
                 if letter not in word:
                     wrong += 1
                 status = "won" if all(ch in guessed for ch in set(word)) else ("lost" if wrong >= MAX_ATTEMPTS else "playing")
-                cur.execute("UPDATE game_sessions SET guessed_letters=%s, wrong_count=%s, status=%s WHERE id=%s", (",".join(sorted(guessed)), wrong, status, payload.session_id))
+                cur.execute("UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s WHERE id=%s",
+                            (",".join(sorted(guessed)), wrong, status, payload.session_id))
         conn.commit()
     finally:
         conn.close()
@@ -111,23 +145,29 @@ def guess(payload: GuessRequest):
 
 @app.post("/api/save-score")
 def save_score(payload: SaveScoreRequest):
-    name = payload.player_name.strip()
-    if not name or len(name) > 40:
-        raise HTTPException(status_code=400, detail="Nickname must be between 1 and 40 characters.")
+    name = re.sub(r"\s+", " ", payload.player_name).strip()
+    if not name or len(name) > 40 or not re.search(r"[A-Za-z0-9]", name):
+        raise HTTPException(status_code=400, detail="Enter a name between 1 and 40 characters.")
+    normalized = name.casefold()
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT difficulty, wrong_count, status, score FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
+            cur.execute("SELECT difficulty,wrong_count,status,score FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Game session not found.")
             difficulty, wrong, status, old_score = row
             if status != "won":
-                raise HTTPException(status_code=400, detail="A score can only be saved after a win.")
+                raise HTTPException(status_code=400, detail="A score can only be saved after a real win.")
             if old_score is not None:
-                raise HTTPException(status_code=409, detail="This game's score has already been saved.")
-            score = (MAX_ATTEMPTS - wrong) * 10 + BONUS[difficulty]
-            cur.execute("UPDATE game_sessions SET player_name=%s, score=%s WHERE id=%s", (name, score, payload.session_id))
+                raise HTTPException(status_code=409, detail="This round's score has already been saved.")
+            cur.execute("""INSERT INTO players(name,normalized_name) VALUES (%s,%s)
+                ON CONFLICT(normalized_name) DO UPDATE SET name=EXCLUDED.name
+                RETURNING id""", (name, normalized))
+            player_id = cur.fetchone()[0]
+            score = max(0, (MAX_ATTEMPTS - wrong) * 10 + BONUS[difficulty])
+            cur.execute("UPDATE game_sessions SET player_name=%s,player_id=%s,score=%s WHERE id=%s",
+                        (name, player_id, score, payload.session_id))
         conn.commit()
     finally:
         conn.close()
@@ -139,7 +179,14 @@ def leaderboard():
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT player_name, score, difficulty FROM game_sessions WHERE status='won' AND score IS NOT NULL ORDER BY score DESC, id ASC LIMIT 50")
+            # One entry per real player: their personal best, ordered highest first.
+            cur.execute("""SELECT p.name, best.score, best.difficulty FROM players p
+                JOIN LATERAL (
+                    SELECT gs.score,gs.difficulty FROM game_sessions gs
+                    WHERE gs.player_id=p.id AND gs.status='won' AND gs.score IS NOT NULL
+                    ORDER BY gs.score DESC,gs.id ASC LIMIT 1
+                ) best ON TRUE
+                ORDER BY best.score DESC,p.name ASC LIMIT 50""")
             rows = cur.fetchall()
     finally:
         conn.close()
