@@ -52,3 +52,7 @@ main{padding:22px 0 0}.intro{position:relative;padding:24px 28px 29px;margin-bot
 .stand-part{stroke:var(--accent);stroke-width:7}
 .brand:focus-visible{outline-offset:5px}
 @media(max-width:680px){.intro h1{font-size:clamp(38px,11vw,48px)}.brand{font-size:14px}.top-actions{gap:6px}.quiet-button{font-size:12px}.panel-top h2{font-size:19px}.word-meta{font-size:10px}.scores .podium .player-score{font-size:17px}}
+
+/* Player name field matches the rest of the controls */
+.controls input{width:100%;min-width:0;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:15px;}
+.controls input::placeholder{color:var(--muted);opacity:1;}
