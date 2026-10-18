@@ -36,7 +36,7 @@ def init_db():
                 status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER)""")
             for difficulty, words in SAMPLE_WORDS.items():
                 for word in words:
-                    cur.execute("INSERT INTO words (word, difficulty) VALUES (%s, %s) ON CONFLICT (word, difficulty) DO NOTHING", (word, difficulty))
+                    cur.execute("INSERT INTO words (word, difficulty) SELECT %s, %s WHERE NOT EXISTS (SELECT 1 FROM words WHERE word=%s AND difficulty=%s)", (word, difficulty, word, difficulty))
         connection.commit()
     finally:
         connection.close()
