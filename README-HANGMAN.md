@@ -21,7 +21,7 @@ Words are selected randomly from the database within the selected difficulty. Th
 - The game ends on a complete word (win) or after the eighth wrong guess (loss).
 - **Live score = 10 points per occurrence of each newly guessed correct letter.** On a win, add a difficulty bonus: Easy = 0, Medium = 20, Hard = 40. Wrong guesses and duplicate guesses add no points. The live score is stored after each new guess.
 - The player enters a non-blank name before starting. The same normalized name is reused across rounds; scores persist in Neon.
-- The leaderboard shows up to 50 players, displaying the active round's score while they are playing and otherwise their best recorded round. Equal scores are ordered alphabetically by player name. The top three entries have medal badges and larger names.
+- The leaderboard shows up to 50 players, displaying the newest active round's score while they are playing and otherwise their best completed round. Equal scores are ordered alphabetically by player name. The top three entries have medal badges and larger names.
 
 ## Data model
 
