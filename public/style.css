@@ -9,3 +9,46 @@ main{padding:22px 0 0}.intro{position:relative;padding:24px 28px 29px;margin-bot
 @media(max-width:1100px){.game-layout{grid-template-columns:minmax(190px,.7fr) minmax(330px,1.3fr)}.leaderboard-panel{grid-column:1/-1;max-width:none}.leaderboard-panel .scores{max-height:230px}.game-layout.leader-hidden{grid-template-columns:minmax(190px,.7fr) minmax(330px,1.3fr)}.game-layout.leader-hidden .leaderboard-panel{display:none}}
 @media(max-width:680px){.topbar,main{width:calc(100% - 28px)}.topbar{align-items:flex-start;flex-direction:column;padding:16px 0}.top-actions{width:100%}.quiet-button{padding:8px 10px}.top-actions .menu-toggle{margin-left:auto}main{padding-top:12px}.intro{padding:22px 20px}.intro h1{font-size:44px}.game-layout,.game-layout.leader-hidden{grid-template-columns:1fr}.drawing-panel{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;align-items:center}.drawing-panel .panel-top,.drawing-panel .drawing-caption,.drawing-panel .drawing-legend{grid-column:1/-1}.hangman{max-height:240px;grid-row:2;grid-column:1/-1;width:min(100%,280px)}.drawing-caption{text-align:center}.game-layout.leader-hidden .leaderboard-panel{display:none}.rules{grid-template-columns:1fr}.controls{align-items:stretch;flex-direction:column}.controls .primary-button{width:100%}.word{font-size:28px}.panel{padding:16px}.keyboard{gap:5px}.keyboard button{padding:10px 0}.leaderboard-panel{grid-column:auto}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Final readability and leaderboard polish */
+.brand{gap:0;font-size:15px;letter-spacing:.12em}
+.brand small{font-size:11px;letter-spacing:.12em}
+.intro .eyebrow,.panel .eyebrow{font-size:11px}
+.intro-copy{font-size:16px}
+.eyebrow{line-height:1.4}
+.panel-top h2{font-size:20px}
+.counter{font-size:13px}
+.counter b{font-size:17px}
+.controls label{font-size:13px}
+.controls select,.score-entry input{font-size:15px}
+.primary-button{font-size:14px}
+.word-meta{font-size:11px;letter-spacing:.08em}
+.word-meta b{font-size:15px}
+.hint-box p{font-size:14px;line-height:1.45}
+.hint-label{font-size:11px}
+.keyboard-heading h3{font-size:16px}
+.keyboard-heading span{font-size:12px}
+.keyboard button{font-size:14px;padding:11px 0}
+.tried-line{font-size:13px}
+.muted,.board-status{font-size:14px}
+.refresh-button,.quiet-button{font-size:13px;padding:10px 13px}
+.scores{list-style:none;padding:0;display:flex;flex-direction:column;gap:7px}
+.scores li{display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:10px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:12px;font-size:14px;background:var(--panel)}
+.scores li::marker{content:""}
+.scores .rank-badge{grid-row:span 2;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--accent-soft);color:var(--accent-strong);font-size:13px;font-weight:800}
+.scores .player-score{font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.scores .podium{padding:14px;border-width:1px}
+.scores .podium .rank-badge{width:38px;height:38px;font-size:19px;background:#fff0c5}
+.scores .podium .player-score{font-size:18px;font-weight:800}
+.scores .podium-1{background:linear-gradient(110deg,#fff1c7,var(--panel) 80%);border-color:#e8c35c}
+.scores .podium-2{background:linear-gradient(110deg,#e9eff3,var(--panel) 80%);border-color:#c3d0d8}
+.scores .podium-3{background:linear-gradient(110deg,#f9e2d1,var(--panel) 80%);border-color:#e5b18a}
+.scores small{grid-column:2;font-size:12px;margin-top:3px}
+.board-foot,.rules p{font-size:13px;line-height:1.5}
+.rules b{font-size:15px}
+.rules span{font-size:12px}
+.drawing-caption,.drawing-legend{font-size:13px;line-height:1.45}
+.person-part{stroke-dasharray:220;stroke-dashoffset:220}
+.stand-part{stroke:var(--accent);stroke-width:7}
+.brand:focus-visible{outline-offset:5px}
+@media(max-width:680px){.intro h1{font-size:clamp(38px,11vw,48px)}.brand{font-size:14px}.top-actions{gap:6px}.quiet-button{font-size:12px}.panel-top h2{font-size:19px}.word-meta{font-size:10px}.scores .podium .player-score{font-size:17px}}
