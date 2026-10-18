@@ -4,7 +4,7 @@ A browser-based Hangman game built with HTML, CSS, vanilla JavaScript, FastAPI a
 
 ## Vocabulary and difficulty rules
 
-The server-side file `data/common_words.txt` supplies 7,000+ filtered English words to the database. On first use (and when the word-bank version changes), the backend validates the words and imports them into the persistent `words` table. The browser never receives the answer word until the round is lost.
+The server-side file `data/common_words.txt` supplies 6,000+ filtered English words to the database. On first use (and when the word-bank version changes), the backend validates the words and imports them into the persistent `words` table. The browser never receives the answer word until the round is lost.
 
 Difficulty is based on word length:
 - **Easy:** 3–5 letters
