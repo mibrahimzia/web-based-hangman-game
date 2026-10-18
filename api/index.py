@@ -1,37 +1,41 @@
-"""FastAPI backend for Word Hunt. Scores and player names are persisted in Neon Postgres."""
+"""FastAPI backend for Word Hunt. Vocabulary, sessions and scores live in Neon Postgres."""
 import os
 import re
+from pathlib import Path
+
 import psycopg2
+from psycopg2.extras import execute_values
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
+WORD_BANK_VERSION = "common-english-v1"
 DIFFICULTIES = {"easy", "medium", "hard"}
 BONUS = {"easy": 0, "medium": 20, "hard": 40}
 HINTS = {
     "easy": "Everyday words: familiar things, places, and actions.",
-    "medium": "A common word with a little more to uncover.",
-    "hard": "A longer word from everyday life and the world around you.",
+    "medium": "A familiar word with a little more to uncover.",
+    "hard": "A longer, commonly used English word.",
 }
-SAMPLE_WORDS = {
-    "easy": ["apple", "chair", "cloud", "dream", "flame", "grape", "house", "lemon", "music", "plant", "river", "smile", "stone", "table", "water"],
-    "medium": ["airport", "battery", "captain", "diamond", "evening", "freedom", "journey", "lantern", "machine", "notebook", "picture", "rainbow", "station", "thunder", "village"],
-    "hard": ["adventure", "basketball", "celebration", "destination", "environment", "friendship", "generation", "imagination", "kaleidoscope", "lighthouse", "playground", "technology", "understand", "watermelon", "wonderful"],
-}
+DIFFICULTY_RULE = {"easy": "3–5 letters", "medium": "6–7 letters", "hard": "8–10 letters"}
+
 
 def get_connection():
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise HTTPException(status_code=503, detail="DATABASE_URL is missing from Vercel environment variables.")
     try:
-        return psycopg2.connect(url, connect_timeout=8, sslmode="require")
+        return psycopg2.connect(url, connect_timeout=5, sslmode="require")
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not connect to Neon. Check the Vercel DATABASE_URL setting.") from exc
 
-def init_db():
-    """Idempotent schema setup; never inserts fake players or scores."""
-    conn = get_connection()
+
+def init_db(conn=None):
+    """Create schema and import the curated 8k+ word bank only once per version."""
+    owns_connection = conn is None
+    if owns_connection:
+        conn = get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""CREATE TABLE IF NOT EXISTS words (
@@ -48,46 +52,69 @@ def init_db():
                 status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER,
                 player_id INTEGER REFERENCES players(id))""")
             cur.execute("ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS player_id INTEGER REFERENCES players(id)")
-            for difficulty, words in SAMPLE_WORDS.items():
-                for word in words:
-                    cur.execute("""INSERT INTO words(word,difficulty)
-                        SELECT %s,%s WHERE NOT EXISTS
-                        (SELECT 1 FROM words WHERE lower(word)=lower(%s) AND difficulty=%s)""",
-                        (word, difficulty, word, difficulty))
+            cur.execute("""CREATE TABLE IF NOT EXISTS word_bank_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1), version TEXT NOT NULL, imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+            cur.execute("SELECT version FROM word_bank_meta WHERE id=1")
+            row = cur.fetchone()
+            if not row or row[0] != WORD_BANK_VERSION:
+                path = Path(__file__).resolve().parent.parent / "data" / "common_words.txt"
+                try:
+                    candidates = path.read_text(encoding="utf-8").splitlines()
+                except OSError as exc:
+                    raise HTTPException(status_code=503, detail="The server word bank file is missing.") from exc
+                valid = []
+                seen = set()
+                for item in candidates:
+                    word = item.strip().lower()
+                    if not re.fullmatch(r"[a-z]{3,10}", word) or word in seen:
+                        continue
+                    seen.add(word)
+                    difficulty = "easy" if len(word) <= 5 else "medium" if len(word) <= 7 else "hard"
+                    valid.append((word, difficulty))
+                if len(valid) < 5000:
+                    raise HTTPException(status_code=503, detail="The word bank must contain at least 5,000 valid words.")
+                cur.execute("DELETE FROM words")
+                execute_values(cur, "INSERT INTO words(word,difficulty) VALUES %s", valid, page_size=1000)
+                cur.execute("""INSERT INTO word_bank_meta(id,version) VALUES (1,%s)
+                    ON CONFLICT(id) DO UPDATE SET version=EXCLUDED.version, imported_at=NOW()""", (WORD_BANK_VERSION,))
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
+
 
 def mask_word(word, guessed):
     return " ".join(ch if ch in guessed else "_" for ch in word)
+
 
 class GuessRequest(BaseModel):
     session_id: int
     letter: str = Field(min_length=1, max_length=8)
 
+
 class SaveScoreRequest(BaseModel):
     session_id: int
     player_name: str = Field(min_length=1, max_length=40)
 
+
 @app.get("/health")
 @app.get("/api/health")
 def health():
+    conn = get_connection()
     try:
-        init_db()
-        conn = get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM words")
-                word_count = cur.fetchone()[0]
-                cur.execute("SELECT COUNT(*) FROM players")
-                player_count = cur.fetchone()[0]
-            return {"ok": True, "database": "connected", "words": word_count, "players": player_count}
-        finally:
-            conn.close()
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail="Database setup failed. Check that the Neon database user can create/alter tables.") from exc
+        init_db(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM words")
+            word_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM players")
+            player_count = cur.fetchone()[0]
+        return {"ok": True, "database": "connected", "words": word_count, "players": player_count}
+    finally:
+        conn.close()
+
 
 @app.get("/new-game")
 @app.get("/api/new-game")
@@ -95,29 +122,37 @@ def new_game(difficulty: str = "easy"):
     difficulty = difficulty.lower()
     if difficulty not in DIFFICULTIES:
         raise HTTPException(status_code=400, detail="Choose easy, medium, or hard.")
-    init_db()
     conn = get_connection()
     try:
+        init_db(conn)
         with conn.cursor() as cur:
-            bounds = {"easy": (3, 5), "medium": (6, 8), "hard": (9, 30)}
+            bounds = {"easy": (3, 5), "medium": (6, 7), "hard": (8, 10)}
             low, high = bounds[difficulty]
-            # Preserve the existing difficulty assignment but also enforce length,
-            # and reject phrases, punctuation, and non-ASCII words for fair gameplay.
             cur.execute("""SELECT word FROM words
-                WHERE lower(difficulty)=%s
-                  AND length(word) BETWEEN %s AND %s
-                  AND lower(word) ~ '^[a-z]+$'
+                WHERE difficulty=%s AND length(word) BETWEEN %s AND %s
                 ORDER BY RANDOM() LIMIT 1""", (difficulty, low, high))
             row = cur.fetchone()
             if not row:
-                raise HTTPException(status_code=503, detail=f"No usable {difficulty} words found. Check the words table's difficulty labels and word lengths.")
-            word = row[0].lower()
+                raise HTTPException(status_code=503, detail=f"No playable words are available for {difficulty}.")
+            word = row[0]
             cur.execute("INSERT INTO game_sessions(word,difficulty) VALUES (%s,%s) RETURNING id", (word, difficulty))
             session_id = cur.fetchone()[0]
         conn.commit()
+        return {
+            "session_id": session_id,
+            "masked_word": mask_word(word, set()),
+            "wrong_count": 0,
+            "max_attempts": MAX_ATTEMPTS,
+            "status": "playing",
+            "hint": HINTS[difficulty],
+            "difficulty_rule": DIFFICULTY_RULE[difficulty],
+        }
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
-    return {"session_id": session_id, "masked_word": mask_word(word, set()), "wrong_count": 0, "max_attempts": MAX_ATTEMPTS, "status": "playing", "hint": HINTS[difficulty]}
+
 
 @app.post("/guess")
 @app.post("/api/guess")
@@ -141,10 +176,14 @@ def guess(payload: GuessRequest):
                 status = "won" if all(ch in guessed for ch in set(word)) else ("lost" if wrong >= MAX_ATTEMPTS else "playing")
                 cur.execute("UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s WHERE id=%s",
                             (",".join(sorted(guessed)), wrong, status, payload.session_id))
-        conn.commit()
+            conn.commit()
+            return {"masked_word": word if status == "lost" else mask_word(word, guessed), "wrong_count": wrong, "status": status}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
-    return {"masked_word": word if status == "lost" else mask_word(word, guessed), "wrong_count": wrong, "status": status}
+
 
 @app.post("/save-score")
 @app.post("/api/save-score")
@@ -173,18 +212,21 @@ def save_score(payload: SaveScoreRequest):
             cur.execute("UPDATE game_sessions SET player_name=%s,player_id=%s,score=%s WHERE id=%s",
                         (name, player_id, score, payload.session_id))
         conn.commit()
+        return {"score": score, "player_name": name}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
-    return {"score": score, "player_name": name}
+
 
 @app.get("/leaderboard")
 @app.get("/api/leaderboard")
 def leaderboard():
-    init_db()
     conn = get_connection()
     try:
+        init_db(conn)
         with conn.cursor() as cur:
-            # One entry per real player: their personal best, ordered highest first.
             cur.execute("""SELECT p.name, best.score, best.difficulty FROM players p
                 JOIN LATERAL (
                     SELECT gs.score,gs.difficulty FROM game_sessions gs
@@ -193,6 +235,6 @@ def leaderboard():
                 ) best ON TRUE
                 ORDER BY best.score DESC,p.name ASC LIMIT 50""")
             rows = cur.fetchall()
+        return [{"player_name": r[0], "score": r[1], "difficulty": r[2]} for r in rows]
     finally:
         conn.close()
-    return [{"player_name": r[0], "score": r[1], "difficulty": r[2]} for r in rows]
