@@ -1,6 +1,10 @@
 """FastAPI backend for Word Hunt. Vocabulary, sessions and scores live in Neon Postgres."""
 import os
 import re
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import psycopg2
@@ -125,14 +129,21 @@ def health():
 
 @app.get("/new-game")
 @app.get("/api/new-game")
-def new_game(difficulty: str = "easy"):
+def new_game(difficulty: str = "easy", player_name: str = ""):
     difficulty = difficulty.lower()
     if difficulty not in DIFFICULTIES:
         raise HTTPException(status_code=400, detail="Choose easy, medium, or hard.")
+    player_name = re.sub(r"\s+", " ", player_name).strip()
+    if not player_name or len(player_name) > 40 or not re.search(r"[A-Za-z0-9]", player_name):
+        raise HTTPException(status_code=400, detail="Enter a player name (1–40 characters) before starting.")
+    normalized = player_name.casefold()
     conn = get_connection()
     try:
         init_db(conn)
         with conn.cursor() as cur:
+            cur.execute("""INSERT INTO players(name,normalized_name) VALUES (%s,%s)
+                ON CONFLICT(normalized_name) DO UPDATE SET name=EXCLUDED.name RETURNING id""", (player_name, normalized))
+            player_id = cur.fetchone()[0]
             bounds = {"easy": (3, 5), "medium": (6, 7), "hard": (8, 10)}
             low, high = bounds[difficulty]
             cur.execute("""SELECT word FROM words
@@ -142,7 +153,7 @@ def new_game(difficulty: str = "easy"):
             if not row:
                 raise HTTPException(status_code=503, detail=f"No playable words are available for {difficulty}.")
             word = row[0]
-            cur.execute("INSERT INTO game_sessions(word,difficulty) VALUES (%s,%s) RETURNING id", (word, difficulty))
+            cur.execute("INSERT INTO game_sessions(word,difficulty,player_name,player_id,score) VALUES (%s,%s,%s,%s,0) RETURNING id", (word, difficulty, player_name, player_id))
             session_id = cur.fetchone()[0]
         conn.commit()
         return {
@@ -153,6 +164,8 @@ def new_game(difficulty: str = "easy"):
             "status": "playing",
             "hint": HINTS[difficulty],
             "difficulty_rule": DIFFICULTY_RULE[difficulty],
+            "player_name": player_name,
+            "score": 0,
         }
     except Exception:
         conn.rollback()
@@ -170,21 +183,25 @@ def guess(payload: GuessRequest):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word,guessed_letters,wrong_count,status FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
+            cur.execute("SELECT word,guessed_letters,wrong_count,status,difficulty,player_id,COALESCE(score,0),player_name FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Game session not found. Start a new round.")
-            word, stored, wrong, status = row
+            word, stored, wrong, status, difficulty, player_id, score, player_name = row
             guessed = set(stored.split(",")) if stored else set()
             if status == "playing" and letter not in guessed:
                 guessed.add(letter)
                 if letter not in word:
                     wrong += 1
+                else:
+                    score += 10 * word.count(letter)
                 status = "won" if all(ch in guessed for ch in set(word)) else ("lost" if wrong >= MAX_ATTEMPTS else "playing")
-                cur.execute("UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s WHERE id=%s",
-                            (",".join(sorted(guessed)), wrong, status, payload.session_id))
+                if status == "won":
+                    score += BONUS[difficulty]
+                cur.execute("UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s,score=%s WHERE id=%s",
+                            (",".join(sorted(guessed)), wrong, status, score, payload.session_id))
             conn.commit()
-            return {"masked_word": word if status == "lost" else mask_word(word, guessed), "wrong_count": wrong, "status": status}
+            return {"masked_word": word if status == "lost" else mask_word(word, guessed), "wrong_count": wrong, "status": status, "score": score, "player_name": player_name, "correct_guess": letter in word}
     except Exception:
         conn.rollback()
         raise
@@ -237,7 +254,7 @@ def leaderboard():
             cur.execute("""SELECT p.name, best.score, best.difficulty FROM players p
                 JOIN LATERAL (
                     SELECT gs.score,gs.difficulty FROM game_sessions gs
-                    WHERE gs.player_id=p.id AND gs.status='won' AND gs.score IS NOT NULL
+                    WHERE gs.player_id=p.id AND gs.score IS NOT NULL
                     ORDER BY gs.score DESC,gs.id ASC LIMIT 1
                 ) best ON TRUE
                 ORDER BY best.score DESC,p.name ASC LIMIT 50""")
@@ -245,3 +262,37 @@ def leaderboard():
         return [{"player_name": r[0], "score": r[1], "difficulty": r[2]} for r in rows]
     finally:
         conn.close()
+
+
+
+@app.get("/hint/{session_id}")
+@app.get("/api/hint/{session_id}")
+def word_hint(session_id: int):
+    """Fetch a word-specific definition without exposing the answer to the browser."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT word FROM game_sessions WHERE id=%s", (session_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Game session not found.")
+            word = row[0]
+    finally:
+        conn.close()
+    url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "WordHunt-EF101/1.0"})
+        with urllib.request.urlopen(req, timeout=2.5) as response:
+            data = json.loads(response.read(400_000).decode("utf-8"))
+        definitions = []
+        for entry in data if isinstance(data, list) else []:
+            for meaning in entry.get("meanings", []):
+                for item in meaning.get("definitions", []):
+                    definition = re.sub(r"\s+", " ", str(item.get("definition", "")).strip())
+                    if definition and definition.lower() != word.lower() and len(definition) < 180:
+                        definitions.append(definition)
+        if definitions:
+            return {"hint": definitions[0]}
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError):
+        pass
+    return {"hint": "Think of a familiar English word with " + str(len(word)) + " letters."}
