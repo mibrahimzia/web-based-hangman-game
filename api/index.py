@@ -69,7 +69,7 @@ class SaveScoreRequest(BaseModel):
     session_id: int
     player_name: str = Field(min_length=1, max_length=40)
 
-@app.get("/api/health")
+@app.get("/health")
 def health():
     try:
         init_db()
@@ -88,7 +88,7 @@ def health():
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database setup failed. Check that the Neon database user can create/alter tables.") from exc
 
-@app.get("/api/new-game")
+@app.get("/new-game")
 def new_game(difficulty: str = "easy"):
     difficulty = difficulty.lower()
     if difficulty not in DIFFICULTIES:
@@ -117,7 +117,7 @@ def new_game(difficulty: str = "easy"):
         conn.close()
     return {"session_id": session_id, "masked_word": mask_word(word, set()), "wrong_count": 0, "max_attempts": MAX_ATTEMPTS, "status": "playing", "hint": HINTS[difficulty]}
 
-@app.post("/api/guess")
+@app.post("/guess")
 def guess(payload: GuessRequest):
     letter = payload.letter.strip().lower()
     if len(letter) != 1 or letter not in "abcdefghijklmnopqrstuvwxyz":
@@ -143,7 +143,7 @@ def guess(payload: GuessRequest):
         conn.close()
     return {"masked_word": word if status == "lost" else mask_word(word, guessed), "wrong_count": wrong, "status": status}
 
-@app.post("/api/save-score")
+@app.post("/save-score")
 def save_score(payload: SaveScoreRequest):
     name = re.sub(r"\s+", " ", payload.player_name).strip()
     if not name or len(name) > 40 or not re.search(r"[A-Za-z0-9]", name):
@@ -173,7 +173,7 @@ def save_score(payload: SaveScoreRequest):
         conn.close()
     return {"score": score, "player_name": name}
 
-@app.get("/api/leaderboard")
+@app.get("/leaderboard")
 def leaderboard():
     init_db()
     conn = get_connection()
