@@ -134,6 +134,7 @@ def save_score(payload: SaveScoreRequest):
 
 @app.get("/api/leaderboard")
 def leaderboard():
+    init_db()
     conn = get_connection()
     try:
         with conn.cursor() as cur:
