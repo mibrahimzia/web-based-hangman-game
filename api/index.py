@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
-WORD_BANK_VERSION = "common-english-v1"
+WORD_BANK_VERSION = "common-english-v2"
 _DB_INITIALIZED = False
 DIFFICULTIES = {"easy", "medium", "hard"}
 BONUS = {"easy": 0, "medium": 20, "hard": 40}
