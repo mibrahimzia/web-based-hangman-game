@@ -6,7 +6,7 @@
 </head>
 <body>
 <header class="topbar">
-<a class="brand" href="/" aria-label="Word Hunt home"><span class="brand-mark" aria-hidden="true">WH</span><span>WORD HUNT <small>EF101-P01</small></span></a>
+<a class="brand" href="/" aria-label="Word Hunt home"><span>WORD HUNT <small>EF101-P01</small></span></a>
 <div class="top-actions"><button id="theme-toggle" class="quiet-button" type="button" aria-label="Toggle light and dark mode">Dark mode</button><button id="style-toggle" class="quiet-button" type="button" aria-label="Switch visual style">Typewriter style</button><button id="leader-toggle" class="quiet-button menu-toggle" type="button" aria-expanded="true" aria-controls="leader-panel"><span class="menu-lines" aria-hidden="true"></span><span>Leaderboard</span></button></div>
 </header>
 <main>
@@ -15,17 +15,17 @@
 <section class="panel drawing-panel" aria-label="Hangman drawing">
 <div class="panel-top"><div><p class="eyebrow">THE GALLOWS</p><h2>Wrong guesses</h2></div><span class="counter"><b id="wrong">0</b> / 8</span></div>
 <svg id="hangman" class="hangman" viewBox="0 0 260 300" role="img" aria-label="Hangman drawing. No parts drawn yet.">
-<path class="gallows" d="M24 276 H194 M58 276 V22 H170 V52 M58 64 L94 22"/>
-<circle class="person-part" data-part="1" cx="170" cy="77" r="24"/>
-<path class="person-part" data-part="2" d="M170 101 V174"/>
-<path class="person-part" data-part="3" d="M170 119 L139 150"/>
-<path class="person-part" data-part="4" d="M170 119 L201 150"/>
-<path class="person-part" data-part="5" d="M170 174 L143 218"/>
-<path class="person-part" data-part="6" d="M170 174 L198 218"/>
-<path class="person-part" data-part="7" d="M170 174 L170 211"/>
-<path class="person-part" data-part="8" d="M158 78 Q170 88 182 78"/>
+<path class="gallows" d="M24 276 H194"/>
+<path class="person-part stand-part" data-part="1" d="M58 276 V22"/>
+<path class="person-part stand-part" data-part="2" d="M58 22 H170"/>
+<path class="person-part stand-part" data-part="3" d="M170 22 V48"/>
+<circle class="person-part" data-part="4" cx="170" cy="76" r="24"/>
+<path class="person-part" data-part="5" d="M170 100 V174"/>
+<path class="person-part" data-part="6" d="M170 119 L139 150"/>
+<path class="person-part" data-part="7" d="M170 119 L201 150"/>
+<path class="person-part" data-part="8" d="M170 174 L143 218 M170 174 L198 218"/>
 </svg>
-<p id="drawing-caption" class="drawing-caption">The stand is ready. Every wrong guess draws another part.</p>
+<p id="drawing-caption" class="drawing-caption">The stand builds one step at a time. Every mistake adds one piece.</p>
 <div class="drawing-legend"><span><i class="legend-dot"></i> Stand</span><span><i class="legend-dot person-dot"></i> Drawing</span></div>
 </section>
 <section id="game" class="panel play-panel">
