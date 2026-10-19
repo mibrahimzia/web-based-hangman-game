@@ -19,11 +19,6 @@ _DB_INITIALIZED = False
 DIFFICULTIES = {"easy", "medium", "hard"}
 ROUND_REWARD = {"easy": 100, "medium": 250, "hard": 500}
 WRONG_PENALTY = {"easy": 10, "medium": 20, "hard": 40}
-HINTS = {
-    "easy": "Everyday words: familiar things, places, and actions.",
-    "medium": "A familiar word with a little more to uncover.",
-    "hard": "A longer, commonly used English word.",
-}
 DIFFICULTY_RULE = {"easy": "4–5 letters", "medium": "6–8 letters", "hard": "9+ letters"}
 
 
@@ -182,7 +177,7 @@ def new_game(difficulty: str = "easy", player_name: str = ""):
             "wrong_count": 0,
             "max_attempts": MAX_ATTEMPTS,
             "status": "playing",
-            "hint": HINTS[difficulty],
+            "hint": "Loading your word-specific dictionary hint…",
             "difficulty_rule": DIFFICULTY_RULE[difficulty],
             "player_name": player_name,
             "score": ROUND_REWARD[difficulty],
