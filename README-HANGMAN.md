@@ -6,13 +6,13 @@ A browser-based Hangman game built with HTML, CSS, vanilla JavaScript, FastAPI a
 
 - The source vocabulary is `data/common_words.txt`.
 - On first use, and whenever `WORD_BANK_VERSION` changes, the backend validates and imports playable words into PostgreSQL's `words` table.
-- The importer keeps alphabetic words of 4–12 letters, removes duplicates, assigns a difficulty by length, and blocks a list of known acronyms, brands, proper names and malformed fragments (including `ibm`, `amd`, `usc`, `trembl` and `struct`). This improves the list but does not guarantee every remaining word is familiar; the blocklist can be extended when new bad examples are found.
+- The importer keeps alphabetic words of 4–20 letters, removes duplicates, assigns a difficulty by length, and blocks a list of known acronyms, brands, proper names and malformed fragments (including `ibm`, `amd`, `usc`, `trembl` and `struct`). This improves the list but does not guarantee every remaining word is familiar; the blocklist can be extended when new bad examples are found.
 - The browser never receives the secret word during an active round.
 
 Difficulty:
 - **Easy:** 4–5 letters; round reward 100 points; each wrong guess costs 10.
 - **Medium:** 6–8 letters; round reward 250 points; each wrong guess costs 20.
-- **Hard:** 9–12 letters; round reward 500 points; each wrong guess costs 40.
+- **Hard:** 9+ letters (the imported word bank supports up to 20 letters); round reward 500 points; each wrong guess costs 40.
 
 ## Scoring, leaderboard and streaks
 
