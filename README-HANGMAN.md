@@ -20,8 +20,8 @@ Difficulty:
 - Every incorrect guess subtracts the level's penalty from that round only. The round value is clamped at zero and never becomes negative.
 - On a win, the remaining round value is added to the player's persistent lifetime score.
 - On a loss, the round value is discarded and the player's lifetime score is unchanged. A failed round therefore cannot erase previously earned points.
-- The leaderboard sorts players by lifetime score, then highest streak, then name. It shows the player's highest streak with a fire icon and the current streak.
-- Each won word increments the current streak. A lost word resets the current streak to zero. The highest streak is stored permanently.
+- The leaderboard sorts players by lifetime score, then highest streak, then name. It shows the player's highest streak with a fire icon and the current streak. Streaks are overall across all difficulties, not separate per level; no single difficulty is implied by the streak count.
+- Each won word increments the overall current streak. A lost word resets the current streak to zero. Ending a round early leaves it unchanged. The highest streak is stored permanently.
 - The scoring migration preserves the previous leaderboard's best completed score as the player's starting lifetime score. Old completed sessions are marked migrated so they are not counted again.
 
 ## Game flow
