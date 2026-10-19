@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
-WORD_BANK_VERSION = "curated-common-english-v5"
+WORD_BANK_VERSION = "curated-common-english-v6"
 _DB_INITIALIZED = False
 DIFFICULTIES = {"easy", "medium", "hard"}
 ROUND_REWARD = {"easy": 100, "medium": 250, "hard": 500}
@@ -24,7 +24,7 @@ HINTS = {
     "medium": "A familiar word with a little more to uncover.",
     "hard": "A longer, commonly used English word.",
 }
-DIFFICULTY_RULE = {"easy": "4–5 letters", "medium": "6–8 letters", "hard": "9–12 letters"}
+DIFFICULTY_RULE = {"easy": "4–5 letters", "medium": "6–8 letters", "hard": "9+ letters"}
 
 
 def get_connection():
@@ -99,7 +99,7 @@ def init_db(conn=None):
                 seen = set()
                 for item in candidates:
                     word = item.strip().lower()
-                    if not re.fullmatch(r"[a-z]{4,12}", word) or word in seen or word in blocked_words:
+                    if not re.fullmatch(r"[a-z]{4,20}", word) or word in seen or word in blocked_words:
                         continue
                     seen.add(word)
                     difficulty = "easy" if len(word) <= 5 else "medium" if len(word) <= 8 else "hard"
@@ -162,7 +162,7 @@ def new_game(difficulty: str = "easy", player_name: str = ""):
             cur.execute("""INSERT INTO players(name,normalized_name) VALUES (%s,%s)
                 ON CONFLICT(normalized_name) DO UPDATE SET name=EXCLUDED.name RETURNING id""", (player_name, normalized))
             player_id = cur.fetchone()[0]
-            bounds = {"easy": (4, 5), "medium": (6, 8), "hard": (9, 12)}
+            bounds = {"easy": (4, 5), "medium": (6, 8), "hard": (9, 20)}
             low, high = bounds[difficulty]
             cur.execute("""SELECT word FROM words
                 WHERE difficulty=%s AND length(word) BETWEEN %s AND %s
