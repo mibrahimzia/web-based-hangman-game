@@ -14,26 +14,28 @@
 <div class="game-layout" id="game-layout">
 <section class="panel drawing-panel" aria-label="Hangman drawing">
 <div class="panel-top"><div><p class="eyebrow">THE GALLOWS</p><h2>Wrong guesses</h2></div><span class="counter"><b id="wrong">0</b> / 8</span></div>
-<svg id="hangman" class="hangman" viewBox="0 0 260 300" role="img" aria-label="Hangman drawing. No parts drawn yet.">
+<svg id="hangman" class="hangman" viewBox="0 0 260 300" role="img" aria-label="Hangman drawing. No figure parts drawn yet.">
 <path class="gallows" d="M24 276 H194"/>
-<path class="person-part stand-part" data-part="1" d="M58 24 H170"/>
+<path class="person-part stand-part" data-part="1" d="M58 24 H194"/>
 <path class="person-part stand-part" data-part="2" d="M58 276 V24"/>
-<g class="person-part" data-part="3">
-  <path d="M170 24 V48"/>
-  <circle cx="170" cy="72" r="22"/>
+<path class="person-part stand-part" data-part="3" d="M58 78 L112 24"/>
+<path class="person-part stand-part" data-part="4" d="M170 24 V48"/>
+<circle class="person-part" data-part="5" cx="170" cy="72" r="22"/>
+<path class="person-part" data-part="6" d="M170 94 V160"/>
+<g class="person-part" data-part="7">
+  <path d="M170 112 L140 140"/>
+  <path d="M170 112 L200 140"/>
 </g>
-<path class="person-part" data-part="4" d="M170 94 V160"/>
-<path class="person-part" data-part="5" d="M170 112 L140 140"/>
-<path class="person-part" data-part="6" d="M170 112 L200 140"/>
-<path class="person-part" data-part="7" d="M170 160 L142 207"/>
-<path class="person-part" data-part="8" d="M170 160 L198 207"/>
+<g class="person-part" data-part="8">
+  <path d="M170 160 L142 207"/>
+  <path d="M170 160 L198 207"/>
+</g>
 </svg>
-<p id="drawing-caption" class="drawing-caption">The stand is connected. Each wrong guess adds one part.</p>
-<div class="drawing-legend"><span><i class="legend-dot"></i> Stand</span><span><i class="legend-dot person-dot"></i> Drawing</span></div>
+
 </section>
 <section id="game" class="panel play-panel">
 <div class="panel-top"><div><p class="eyebrow">YOUR ROUND</p><h2 id="title">Ready when you are.</h2></div><span id="status" class="pill">NOT STARTED</span></div>
-<div class="controls"><label for="name">Player name<input id="name" maxlength="40" required placeholder="Enter your name" autocomplete="nickname"></label><label for="difficulty">Difficulty<select id="difficulty"><option value="easy">Easy · 4–5 letters</option><option value="medium">Medium · 6–8 letters</option><option value="hard">Hard · 9+ letters</option></select></label><button id="new-game" class="primary-button" type="button">Start a game <span aria-hidden="true">→</span></button></div>
+<div class="controls"><label for="name">Player name<input id="name" maxlength="40" required placeholder="Enter your name" autocomplete="nickname"></label><label for="difficulty">Difficulty<select id="difficulty"><option value="easy">Easy · 4–5 letters</option><option value="medium">Medium · 6–8 letters</option><option value="hard">Hard · 9+ letters</option></select></label><button id="new-game" class="primary-button" type="button">Start a game <span aria-hidden="true">→</span></button><button id="end-game" class="quiet-button" type="button" hidden>End game</button></div>
 <div class="word-area"><div class="word-meta"><span>HIDDEN WORD</span><span><b id="left">8</b> chances left · ROUND <b id="current-score">100 pts</b> · LIFETIME <b id="lifetime-score">0 pts</b></span></div><div id="word" class="word" aria-label="Hidden word">_ _ _ _ _</div><div class="hint-box"><span class="hint-label">HINT</span><p id="hint">Start a game to reveal your hint.</p></div></div>
 <div class="keyboard-heading"><h3>Choose a letter</h3><span>Keyboard works too</span></div><div id="keyboard" class="keyboard" aria-label="Letter buttons"></div>
 <p class="tried-line">Letters tried <span id="guessed">None yet</span></p>
@@ -42,7 +44,7 @@
 </section>
 <aside id="leader-panel" class="panel leaderboard-panel" aria-label="Leaderboard">
 <div class="panel-top"><div><p class="eyebrow">PERSONAL BESTS</p><h2>Leaderboard</h2></div><button id="leader-close" class="icon-button" type="button" aria-label="Close leaderboard">×</button></div>
-<p class="muted">Lifetime points · 🔥 shows each player’s best win streak.</p><button id="refresh" class="refresh-button" type="button">Refresh scores ↻</button><p id="board-status" class="board-status" aria-live="polite">Loading scores…</p><ol id="scores" class="scores"></ol><p class="board-foot">Press Tab to move through the game. Use the menu to reopen this panel.</p>
+<p class="muted">Lifetime points · 🔥 shows the overall streak across all difficulties.</p><button id="refresh" class="refresh-button" type="button">Refresh scores ↻</button><p id="board-status" class="board-status" aria-live="polite">Loading scores…</p><ol id="scores" class="scores"></ol><p class="board-foot">Press Tab to move through the game. Use the menu to reopen this panel.</p>
 </aside>
 </div>
 <section class="rules"><div><span>01</span><b>Pick a level</b><p>Each level changes the word length and hint.</p></div><div><span>02</span><b>Use your chances</b><p>Eight incorrect guesses. Repeated letters are free.</p></div><div><span>03</span><b>Earn your score</b><p>Win words to add points. Wrong guesses reduce only this round’s reward.</p></div></section>
