@@ -56,3 +56,31 @@ main{padding:22px 0 0}.intro{position:relative;padding:24px 28px 29px;margin-bot
 /* Player name field matches the rest of the controls */
 .controls input{width:100%;min-width:0;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:15px;}
 .controls input::placeholder{color:var(--muted);opacity:1;}
+
+
+/* Connected hangman strokes and round result dialogs */
+.person-part{stroke-dasharray:400;stroke-dashoffset:400}
+.stand-part{stroke:var(--accent);stroke-width:7}
+#hangman .person-part path,#hangman .person-part circle{vector-effect:non-scaling-stroke}
+#game{position:relative}
+.round-modal[hidden]{display:none!important}
+.round-modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:20px;background:rgba(8,28,22,.72);backdrop-filter:blur(7px);animation:modal-backdrop-in .18s ease-out}
+.round-card{width:min(580px,100%);max-height:min(88vh,820px);overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:28px;padding:clamp(24px,5vw,44px);box-shadow:0 30px 100px #0005;text-align:center;animation:modal-card-in .28s cubic-bezier(.2,.8,.2,1)}
+.modal-celebration{font-size:clamp(38px,8vw,58px);letter-spacing:.08em;margin-bottom:10px;line-height:1.2}
+.round-card .eyebrow{font-size:12px;color:var(--accent);font-weight:800;letter-spacing:.16em}
+.round-card h2{font-size:clamp(29px,5vw,42px);line-height:1.08;margin:10px 0 12px;letter-spacing:-.04em}
+.modal-word{font-size:clamp(24px,5vw,36px);font-weight:800;letter-spacing:.15em;overflow-wrap:anywhere;margin:18px 0 22px;color:var(--accent)}
+.meaning-panel{border:1px solid var(--line);background:var(--page);border-radius:16px;padding:17px 20px;text-align:left}
+.meaning-panel span{font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--muted)}
+.meaning-panel p{font-size:16px;line-height:1.55;margin:8px 0 0}
+.modal-score{font-size:16px;font-weight:800;margin:20px 0 6px}
+.modal-streak{font-size:14px;color:var(--muted);margin:0 0 22px}
+.modal-action{width:100%;justify-content:center;font-size:17px;padding:16px 20px;min-height:54px}
+.round-modal.is-win .round-card{border-color:var(--good)}
+.round-modal.is-loss .modal-celebration{filter:grayscale(.2)}
+.guess-celebration{position:absolute;z-index:3;right:18px;top:18px;font-size:38px;pointer-events:none;animation:guess-party 1.05s ease-out forwards}
+@keyframes modal-backdrop-in{from{opacity:0}to{opacity:1}}
+@keyframes modal-card-in{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes guess-party{0%{opacity:0;transform:translateY(14px) rotate(-18deg) scale(.5)}20%{opacity:1;transform:translateY(0) rotate(12deg) scale(1.15)}70%{opacity:1;transform:translateY(-18px) rotate(-8deg) scale(1)}100%{opacity:0;transform:translateY(-38px) rotate(8deg) scale(.85)}}
+@media(max-width:600px){.round-modal{padding:12px}.round-card{border-radius:22px;padding:24px 18px}.meaning-panel p{font-size:15px}.modal-word{letter-spacing:.1em}.guess-celebration{right:10px;top:10px}}
+@media(prefers-reduced-motion:reduce){.round-modal,.round-card,.guess-celebration{animation:none!important}}
