@@ -14,10 +14,11 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
-WORD_BANK_VERSION = "common-english-v3"
+WORD_BANK_VERSION = "curated-common-english-v4"
 _DB_INITIALIZED = False
 DIFFICULTIES = {"easy", "medium", "hard"}
-BONUS = {"easy": 0, "medium": 20, "hard": 40}
+ROUND_REWARD = {"easy": 100, "medium": 250, "hard": 500}
+WRONG_PENALTY = {"easy": 10, "medium": 20, "hard": 40}
 HINTS = {
     "easy": "Everyday words: familiar things, places, and actions.",
     "medium": "A familiar word with a little more to uncover.",
@@ -55,13 +56,31 @@ def init_db(conn=None):
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(40) NOT NULL,
                 normalized_name VARCHAR(40) NOT NULL UNIQUE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                total_score INTEGER NOT NULL DEFAULT 0,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                highest_streak INTEGER NOT NULL DEFAULT 0)""")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS total_score INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS current_streak INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS highest_streak INTEGER NOT NULL DEFAULT 0")
             cur.execute("""CREATE TABLE IF NOT EXISTS game_sessions (
                 id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL,
                 guessed_letters TEXT NOT NULL DEFAULT '', wrong_count INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER,
-                player_id INTEGER REFERENCES players(id))""")
+                player_id INTEGER REFERENCES players(id),
+                score_committed BOOLEAN NOT NULL DEFAULT FALSE)""")
             cur.execute("ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS player_id INTEGER REFERENCES players(id)")
+            cur.execute("ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS score_committed BOOLEAN NOT NULL DEFAULT FALSE")
+            cur.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
+                migration_key TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+            cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='lifetime-score-v1'")
+            if not cur.fetchone():
+                cur.execute("""UPDATE players p SET total_score=GREATEST(p.total_score,COALESCE((
+                    SELECT MAX(gs.score) FROM game_sessions gs
+                    WHERE gs.player_id=p.id AND gs.status IN ('won','lost') AND gs.score IS NOT NULL
+                ),0))""")
+                cur.execute("UPDATE game_sessions SET score_committed=TRUE WHERE status IN ('won','lost')")
+                cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('lifetime-score-v1')")
             cur.execute("""CREATE TABLE IF NOT EXISTS word_bank_meta (
                 id INTEGER PRIMARY KEY CHECK (id = 1), version TEXT NOT NULL, imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
             cur.execute("SELECT version FROM word_bank_meta WHERE id=1")
@@ -72,11 +91,12 @@ def init_db(conn=None):
                     candidates = path.read_text(encoding="utf-8").splitlines()
                 except OSError as exc:
                     raise HTTPException(status_code=503, detail="The server word bank file is missing.") from exc
+                blocked_words = set("""ibm amd usc amp blvd trembl struct johnny nancy nutten travesti tft cfr scsi mhz ghz rpm hdtv xhtml phpbb zdnet lycos gamespot myspace netscape macromedia compaq packard hewlett mercedes chevrolet nissan yamaha verizon reuters espn cnn cbs nhl nba mlb ncaa ieee nasa fda ssl dns tcp rfc oem plc atm cgi seo jpg gif png html xml ftp http https url uri api sdk cpu gpu ram rom usb dvd cdrom vhs mpg mp3 mp4 jpeg wifi lan wan vpn isp bbc nyc hrs mins secs dept approx aka asap btw lol omg lmao tbh idk imo fyi inc ltd llc corp usa eu nato islamic muslim christians jews deutsch svenska norweg danish estonian latvian lithuanian slovak slovene czech polish greek latin russian chinese japanese korean hindi urdu bengali punjabi tamil telugu marathi swahili turkish persian portuguese spanish french german italian dutch welsh gaelic basque cyprus kenya cuba saudi nepal delhi rio peru chad malta samoa fiji laos mali oman qatar yemen ghana togo benin niger sudan libya congo rwanda zambia malawi angola serbia croatia romania bulgaria albania armenia georgia bristol glasgow montreal ottawa calgary manhattan brooklyn oakland memphis honolulu rochester arlington louisville newcastle queensland yorkshire madonna britney eminem justin jimmy carter marc albert warren barry marie kate karen margaret ralph mitchell wright collins parker kennedy cooper walter vincent francis dennis charlie graham brad todd doug dale monica ashley heather christina benjamin catherine julie janet helen lauren alice joel amy pete mrs phd mba cfo ceo cto cio vii viii ix xi xii sur por thru herein thereof unto thee thy thou wanna gotta gonna cant thats didnt doesnt isnt wasnt werent wouldnt couldnt shouldnt mustnt youre theyre weve youve ive im hes shes lets theres heres whos whats wheres whens whys hows dont wont shant aint ampersand peeing upskirts vibrators squirting titten dicks xanax tramadol levitra""".split())
                 valid = []
                 seen = set()
                 for item in candidates:
                     word = item.strip().lower()
-                    if not re.fullmatch(r"[a-z]{3,10}", word) or word in seen:
+                    if not re.fullmatch(r"[a-z]{3,10}", word) or word in seen or word in blocked_words:
                         continue
                     seen.add(word)
                     difficulty = "easy" if len(word) <= 5 else "medium" if len(word) <= 7 else "hard"
@@ -104,11 +124,6 @@ def mask_word(word, guessed):
 class GuessRequest(BaseModel):
     session_id: int
     letter: str = Field(min_length=1, max_length=8)
-
-
-class SaveScoreRequest(BaseModel):
-    session_id: int
-    player_name: str = Field(min_length=1, max_length=40)
 
 
 @app.get("/health")
@@ -153,8 +168,10 @@ def new_game(difficulty: str = "easy", player_name: str = ""):
             if not row:
                 raise HTTPException(status_code=503, detail=f"No playable words are available for {difficulty}.")
             word = row[0]
-            cur.execute("INSERT INTO game_sessions(word,difficulty,player_name,player_id,score) VALUES (%s,%s,%s,%s,0) RETURNING id", (word, difficulty, player_name, player_id))
+            cur.execute("INSERT INTO game_sessions(word,difficulty,player_name,player_id,score,score_committed) VALUES (%s,%s,%s,%s,%s,FALSE) RETURNING id", (word, difficulty, player_name, player_id, ROUND_REWARD[difficulty]))
             session_id = cur.fetchone()[0]
+            cur.execute("SELECT total_score,current_streak,highest_streak FROM players WHERE id=%s", (player_id,))
+            total_score, current_streak, highest_streak = cur.fetchone()
         conn.commit()
         return {
             "session_id": session_id,
@@ -165,7 +182,11 @@ def new_game(difficulty: str = "easy", player_name: str = ""):
             "hint": HINTS[difficulty],
             "difficulty_rule": DIFFICULTY_RULE[difficulty],
             "player_name": player_name,
-            "score": 0,
+            "score": ROUND_REWARD[difficulty],
+            "round_reward": ROUND_REWARD[difficulty],
+            "total_score": total_score,
+            "current_streak": current_streak,
+            "highest_streak": highest_streak,
         }
     except Exception:
         conn.rollback()
@@ -183,60 +204,49 @@ def guess(payload: GuessRequest):
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word,guessed_letters,wrong_count,status,difficulty,player_id,COALESCE(score,0),player_name FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
+            cur.execute("""SELECT word,guessed_letters,wrong_count,status,difficulty,player_id,
+                COALESCE(score,0),player_name,score_committed
+                FROM game_sessions WHERE id=%s FOR UPDATE""", (payload.session_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Game session not found. Start a new round.")
-            word, stored, wrong, status, difficulty, player_id, score, player_name = row
+            word, stored, wrong, status, difficulty, player_id, score, player_name, score_committed = row
             guessed = set(stored.split(",")) if stored else set()
+            total_score = current_streak = highest_streak = 0
             if status == "playing" and letter not in guessed:
                 guessed.add(letter)
                 if letter not in word:
                     wrong += 1
-                else:
-                    score += 10 * word.count(letter)
+                    score = max(0, score - WRONG_PENALTY[difficulty])
                 status = "won" if all(ch in guessed for ch in set(word)) else ("lost" if wrong >= MAX_ATTEMPTS else "playing")
-                if status == "won":
-                    score += BONUS[difficulty]
-                cur.execute("UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s,score=%s WHERE id=%s",
-                            (",".join(sorted(guessed)), wrong, status, score, payload.session_id))
+                if status == "lost":
+                    score = 0
+                cur.execute("""UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s,score=%s
+                    WHERE id=%s""", (",".join(sorted(guessed)), wrong, status, score, payload.session_id))
+                if status == "won" and not score_committed and player_id is not None:
+                    cur.execute("""UPDATE players SET total_score=total_score+%s,
+                        current_streak=current_streak+1,
+                        highest_streak=GREATEST(highest_streak,current_streak+1)
+                        WHERE id=%s RETURNING total_score,current_streak,highest_streak""", (score, player_id))
+                    total_score, current_streak, highest_streak = cur.fetchone()
+                    cur.execute("UPDATE game_sessions SET score_committed=TRUE WHERE id=%s", (payload.session_id,))
+                elif status == "lost" and player_id is not None:
+                    cur.execute("UPDATE players SET current_streak=0 WHERE id=%s RETURNING total_score,current_streak,highest_streak", (player_id,))
+                    total_score, current_streak, highest_streak = cur.fetchone()
+                elif player_id is not None:
+                    cur.execute("SELECT total_score,current_streak,highest_streak FROM players WHERE id=%s", (player_id,))
+                    total_score, current_streak, highest_streak = cur.fetchone()
+            elif player_id is not None:
+                cur.execute("SELECT total_score,current_streak,highest_streak FROM players WHERE id=%s", (player_id,))
+                total_score, current_streak, highest_streak = cur.fetchone()
             conn.commit()
-            return {"masked_word": word if status == "lost" else mask_word(word, guessed), "wrong_count": wrong, "status": status, "score": score, "player_name": player_name, "correct_guess": letter in word}
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-@app.post("/save-score")
-@app.post("/api/save-score")
-def save_score(payload: SaveScoreRequest):
-    name = re.sub(r"\s+", " ", payload.player_name).strip()
-    if not name or len(name) > 40 or not re.search(r"[A-Za-z0-9]", name):
-        raise HTTPException(status_code=400, detail="Enter a name between 1 and 40 characters.")
-    normalized = name.casefold()
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT difficulty,wrong_count,status,score FROM game_sessions WHERE id=%s FOR UPDATE", (payload.session_id,))
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Game session not found.")
-            difficulty, wrong, status, old_score = row
-            if status != "won":
-                raise HTTPException(status_code=400, detail="A score can only be saved after a real win.")
-            if old_score is not None:
-                raise HTTPException(status_code=409, detail="This round's score has already been saved.")
-            cur.execute("""INSERT INTO players(name,normalized_name) VALUES (%s,%s)
-                ON CONFLICT(normalized_name) DO UPDATE SET name=EXCLUDED.name
-                RETURNING id""", (name, normalized))
-            player_id = cur.fetchone()[0]
-            score = max(0, (MAX_ATTEMPTS - wrong) * 10 + BONUS[difficulty])
-            cur.execute("UPDATE game_sessions SET player_name=%s,player_id=%s,score=%s WHERE id=%s",
-                        (name, player_id, score, payload.session_id))
-        conn.commit()
-        return {"score": score, "player_name": name}
+            return {
+                "masked_word": word if status == "lost" else mask_word(word, guessed),
+                "wrong_count": wrong, "status": status, "score": score,
+                "total_score": total_score, "current_streak": current_streak,
+                "highest_streak": highest_streak, "player_name": player_name,
+                "correct_guess": letter in word, "meaning_word": word if status in ("won", "lost") else None
+            }
     except Exception:
         conn.rollback()
         raise
@@ -251,18 +261,20 @@ def leaderboard():
     try:
         init_db(conn)
         with conn.cursor() as cur:
-            cur.execute("""SELECT p.name, best.score, best.difficulty FROM players p
-                JOIN LATERAL (
-                    SELECT gs.score,gs.difficulty FROM game_sessions gs
-                    WHERE gs.player_id=p.id AND gs.score IS NOT NULL
-                    ORDER BY (gs.status='playing') DESC,CASE WHEN gs.status='playing' THEN gs.id END DESC,gs.score DESC,gs.id ASC LIMIT 1
-                ) best ON TRUE
-                ORDER BY best.score DESC,p.name ASC LIMIT 50""")
+            cur.execute("""SELECT p.name,p.total_score,p.highest_streak,p.current_streak,
+                    COALESCE(latest.difficulty,'easy')
+                FROM players p
+                LEFT JOIN LATERAL (
+                    SELECT gs.difficulty FROM game_sessions gs
+                    WHERE gs.player_id=p.id ORDER BY gs.id DESC LIMIT 1
+                ) latest ON TRUE
+                WHERE p.total_score > 0 OR p.highest_streak > 0
+                ORDER BY p.total_score DESC,p.highest_streak DESC,p.name ASC LIMIT 50""")
             rows = cur.fetchall()
-        return [{"player_name": r[0], "score": r[1], "difficulty": r[2]} for r in rows]
+        return [{"player_name": r[0], "score": r[1], "highest_streak": r[2],
+                 "current_streak": r[3], "difficulty": r[4]} for r in rows]
     finally:
         conn.close()
-
 
 
 @app.get("/hint/{session_id}")
