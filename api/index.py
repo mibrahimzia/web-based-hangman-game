@@ -280,34 +280,72 @@ def leaderboard():
         conn.close()
 
 
-@app.get("/hint/{session_id}")
-@app.get("/api/hint/{session_id}")
-def word_hint(session_id: int):
-    """Fetch a word-specific definition without exposing the answer to the browser."""
+@app.post("/end-game/{session_id}")
+@app.post("/api/end-game/{session_id}")
+def end_game(session_id: int):
+    """Abandon an in-progress round without treating it as a loss."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word FROM game_sessions WHERE id=%s", (session_id,))
+            cur.execute("""UPDATE game_sessions SET status='abandoned'
+                WHERE id=%s AND status='playing' RETURNING id""", (session_id,))
+            row = cur.fetchone()
+            if not row:
+                cur.execute("SELECT status FROM game_sessions WHERE id=%s", (session_id,))
+                existing = cur.fetchone()
+                if not existing:
+                    raise HTTPException(status_code=404, detail="Game session not found.")
+                conn.commit()
+                return {"status": existing[0], "message": "This round is already finished."}
+        conn.commit()
+        return {"status": "abandoned", "message": "Round ended. Your lifetime score and streak were kept."}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.get("/hint/{session_id}")
+@app.get("/api/hint/{session_id}")
+def word_hint(session_id: int):
+    """Return a difficulty-adjusted clue and definition without revealing the answer."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT word,difficulty FROM game_sessions WHERE id=%s", (session_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Game session not found.")
-            word = row[0]
+            word, difficulty = row
     finally:
         conn.close()
+
     url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
+    definitions = []
+    parts_of_speech = []
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "WordHunt-EF101/1.0"})
-        with urllib.request.urlopen(req, timeout=2.5) as response:
+        with urllib.request.urlopen(req, timeout=3.0) as response:
             data = json.loads(response.read(400_000).decode("utf-8"))
-        definitions = []
         for entry in data if isinstance(data, list) else []:
             for meaning in entry.get("meanings", []):
+                pos = re.sub(r"[^a-z -]", "", str(meaning.get("partOfSpeech", "")).lower()).strip()
+                if pos and pos not in parts_of_speech:
+                    parts_of_speech.append(pos)
                 for item in meaning.get("definitions", []):
-                    definition = re.sub(r"\s+", " ", str(item.get("definition", "")).strip())
-                    if definition and definition.lower() != word.lower() and len(definition) < 180:
+                    definition = re.sub(r"\\s+", " ", str(item.get("definition", "")).strip())
+                    if definition and definition.lower().strip(" .!") != word.lower() and len(definition) <= 240:
                         definitions.append(definition)
-        if definitions:
-            return {"hint": definitions[0]}
+
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
         pass
-    return {"hint": "Think of a familiar English word with " + str(len(word)) + " letters."}
+
+    meaning = definitions[0] if definitions else "A dictionary definition is unavailable for this word right now."
+    if difficulty == "hard":
+        hint = parts_of_speech[0].capitalize() if parts_of_speech else "Word"
+    elif difficulty == "medium":
+        hint = definitions[0] if definitions else "Dictionary hint temporarily unavailable."
+    else:
+        hint = min(definitions, key=len) if definitions else "Dictionary hint temporarily unavailable."
+    return {"hint": hint, "meaning": meaning, "part_of_speech": parts_of_speech[0] if parts_of_speech else None}
