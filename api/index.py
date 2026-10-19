@@ -318,6 +318,7 @@ def word_hint(session_id: int):
 
     url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
     definitions = []
+    examples = []
     parts_of_speech = []
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "WordHunt-EF101/1.0"})
@@ -329,9 +330,15 @@ def word_hint(session_id: int):
                 if pos and pos not in parts_of_speech:
                     parts_of_speech.append(pos)
                 for item in meaning.get("definitions", []):
-                    definition = re.sub(r"\\s+", " ", str(item.get("definition", "")).strip())
-                    if definition and definition.lower().strip(" .!") != word.lower() and len(definition) <= 240:
+                    definition = re.sub(r"\s+", " ", str(item.get("definition", "")).strip())
+                    if (definition and definition.lower().strip(" .!") != word.lower()
+                            and not re.search(r"\b" + re.escape(word) + r"\b", definition, re.IGNORECASE)
+                            and len(definition) <= 240):
                         definitions.append(definition)
+                    example = re.sub(r"\s+", " ", str(item.get("example", "")).strip())
+                    if (example and len(example) <= 220
+                            and not re.search(r"\b" + re.escape(word) + r"\b", example, re.IGNORECASE)):
+                        examples.append(example)
 
     except (OSError, ValueError, urllib.error.URLError, TimeoutError):
         pass
@@ -342,5 +349,7 @@ def word_hint(session_id: int):
     elif difficulty == "medium":
         hint = definitions[0] if definitions else "Dictionary hint temporarily unavailable."
     else:
-        hint = min(definitions, key=len) if definitions else "Dictionary hint temporarily unavailable."
+        hint = definitions[0] if definitions else "Dictionary hint temporarily unavailable."
+        if examples:
+            hint += " Example: " + examples[0]
     return {"hint": hint, "meaning": meaning, "part_of_speech": parts_of_speech[0] if parts_of_speech else None}
