@@ -84,3 +84,5 @@ main{padding:22px 0 0}.intro{position:relative;padding:24px 28px 29px;margin-bot
 @keyframes guess-party{0%{opacity:0;transform:translateY(14px) rotate(-18deg) scale(.5)}20%{opacity:1;transform:translateY(0) rotate(12deg) scale(1.15)}70%{opacity:1;transform:translateY(-18px) rotate(-8deg) scale(1)}100%{opacity:0;transform:translateY(-38px) rotate(8deg) scale(.85)}}
 @media(max-width:600px){.round-modal{padding:12px}.round-card{border-radius:22px;padding:24px 18px}.meaning-panel p{font-size:15px}.modal-word{letter-spacing:.1em}.guess-celebration{right:10px;top:10px}}
 @media(prefers-reduced-motion:reduce){.round-modal,.round-card,.guess-celebration{animation:none!important}}
+
+#new-game[hidden]{display:none!important}
