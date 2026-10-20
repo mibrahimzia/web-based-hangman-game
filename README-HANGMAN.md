@@ -31,7 +31,7 @@ Difficulty:
 3. Each letter is submitted to `/api/guess`; the backend validates it, updates guesses and mistakes, calculates the current round value, and checks win/loss.
 4. A win commits the round value to lifetime points and updates streaks. A loss discards that round's points and resets the current streak.
 5. A large result dialog appears for both outcomes. It reveals the word, retrieves a definition from the free Dictionary API, and offers **Continue** after a win or **Try again** after a loss.
-6. Difficulty controls the clue: Easy shows a definition plus a safe example when available; Medium shows a conceptual dictionary definition; Hard shows a one-word part-of-speech clue. The result dialog still shows the full definition at every difficulty. If the dictionary API is unavailable, the game reports that rather than displaying a fake generic clue.
+6. Difficulty controls the clue: Easy shows a definition plus an example when available; Medium shows a dictionary definition; Hard shows a part-of-speech clue. The hint endpoint tries Free Dictionary API first and FreeDictionaryAPI.com (Wiktionary-backed) if the first provider has no usable definition, then uses reviewed offline clues for supported words. It never invents a clue from the answer's length or first letter. If neither provider nor offline clues can supply a reliable definition, the game says so instead of pretending a generic sentence is a hint.
 7. **End game** abandons the active round without counting it as a loss, changing lifetime points, or resetting the streak. The player can then change their name or difficulty and start another round.
 8. Correct letters trigger a small celebration animation. The platform stays visible and the eight progressive figure steps are: top beam, vertical post, diagonal brace, suspended rope, head, torso and both arms, both legs.
 
@@ -62,6 +62,6 @@ Difficulty:
 1. Set the Vercel project root to the repository root.
 2. Set `DATABASE_URL` in Vercel Environment Variables for Preview and Production. Use the Neon connection string and enable SSL.
 3. Deploy and check `/api/health`; it should report a connected database and at least 5,000 words.
-4. Word hints use the free, no-key Free Dictionary API (`https://dictionaryapi.dev/`). Lookups run asynchronously with a short timeout and a fallback definition message.
+4. Word hints try the free, no-key Free Dictionary API (`https://dictionaryapi.dev/`) first, then FreeDictionaryAPI.com (`https://freedictionaryapi.com/`, sourced from Wiktionary) when no usable definition is returned. Each request has a short timeout, and the game has reviewed offline clues for selected common words. The page credits FreeDictionaryAPI.com and Wiktionary in the footer. Neither provider documents a guaranteed uptime; if both are unavailable and no offline clue exists, the game shows an honest unavailable-clue message rather than a fake first-letter clue.
 
 Never commit database credentials. Keep `DATABASE_URL` in Vercel Environment Variables, not frontend code.
