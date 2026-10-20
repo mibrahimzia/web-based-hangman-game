@@ -444,5 +444,6 @@ def word_hint(session_id: int):
         "hint_attribution": "FreeDictionaryAPI.com (Wiktionary) may be used as a backup definition source."
     }
     # Cache by word and difficulty so the modal and hint panel do not repeat provider requests.
-    _HINT_CACHE[cache_key] = result
+    if source != "unavailable":
+        _HINT_CACHE[cache_key] = result
     return dict(result)
