@@ -304,7 +304,7 @@ def end_game(session_id: int):
 @app.get("/hint/{session_id}")
 @app.get("/api/hint/{session_id}")
 def word_hint(session_id: int):
-    """Return a difficulty-adjusted clue and definition, with an offline fallback."""
+    """Return a useful difficulty-adjusted clue, trying two dictionary providers before offline clues."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -316,8 +316,9 @@ def word_hint(session_id: int):
     finally:
         conn.close()
 
-    # A small offline dictionary keeps common words playable during API outages.
+    # Reviewed offline clues protect common words if both external services are unavailable.
     local_hints = {
+        "ciao": ("An informal Italian greeting used to say hello or goodbye.", "You might say this when arriving at or leaving a friend's place.", "interjection"),
         "code": ("Instructions written for a computer to follow.", "A programmer may write this to make an app work.", "noun"),
         "website": ("A collection of pages you can visit on the internet.", "You might open one to read news or shop online.", "noun"),
         "compiler": ("A program that translates source code into another form a computer can use.", "Developers use this tool when building software.", "noun"),
@@ -336,11 +337,29 @@ def word_hint(session_id: int):
     }
     local = local_hints.get(word.lower())
     definitions, examples, parts_of_speech = [], [], []
-    failure = None
-    url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
+    failures = []
+
+    def clean_text(value, limit):
+        value = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not value or len(value) > limit or re.search(r"\b" + re.escape(word) + r"\b", value, re.IGNORECASE):
+            return ""
+        return value
+
+    def add_definition(value):
+        value = clean_text(value, 240)
+        if value and value not in definitions:
+            definitions.append(value)
+
+    def add_example(value):
+        value = clean_text(value, 220)
+        if value and value not in examples:
+            examples.append(value)
+
+    # Provider 1: Free Dictionary API (dictionaryapi.dev).
+    primary_url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "WordHunt-EF101/1.0"})
-        with urllib.request.urlopen(req, timeout=3.0) as response:
+        req = urllib.request.Request(primary_url, headers={"User-Agent": "WordHunt-EF101/1.0"})
+        with urllib.request.urlopen(req, timeout=2.5) as response:
             data = json.loads(response.read(400_000).decode("utf-8"))
         for entry in data if isinstance(data, list) else []:
             for meaning in entry.get("meanings", []):
@@ -348,37 +367,69 @@ def word_hint(session_id: int):
                 if pos and pos not in parts_of_speech:
                     parts_of_speech.append(pos)
                 for item in meaning.get("definitions", []):
-                    definition = re.sub(r"\s+", " ", str(item.get("definition", "")).strip())
-                    if (definition and not re.search(r"\b" + re.escape(word) + r"\b", definition, re.IGNORECASE)
-                            and len(definition) <= 240):
-                        definitions.append(definition)
-                    example = re.sub(r"\s+", " ", str(item.get("example", "")).strip())
-                    if (example and len(example) <= 220
-                            and not re.search(r"\b" + re.escape(word) + r"\b", example, re.IGNORECASE)):
-                        examples.append(example)
+                    add_definition(item.get("definition", ""))
+                    add_example(item.get("example", ""))
         if not definitions and not parts_of_speech:
-            failure = "no_entry"
+            failures.append("primary_no_usable_entry")
     except urllib.error.HTTPError as exc:
-        failure = "http_" + str(exc.code)
+        failures.append("primary_http_" + str(exc.code))
     except (OSError, ValueError, TimeoutError) as exc:
-        failure = type(exc).__name__.lower()
+        failures.append("primary_" + type(exc).__name__.lower())
 
-    if failure:
+    # Provider 2: FreeDictionaryAPI.com, backed by Wiktionary, is queried when provider 1 has no definition.
+    if not definitions:
+        secondary_url = "https://freedictionaryapi.com/api/v1/entries/en/" + urllib.parse.quote(word)
+        try:
+            req = urllib.request.Request(secondary_url, headers={"User-Agent": "WordHunt-EF101/1.0"})
+            with urllib.request.urlopen(req, timeout=2.5) as response:
+                data = json.loads(response.read(500_000).decode("utf-8"))
+            entries = data.get("entries", []) if isinstance(data, dict) else []
+            for entry in entries:
+                pos = re.sub(r"[^a-z -]", "", str(entry.get("partOfSpeech", "")).lower()).strip()
+                if pos and pos not in parts_of_speech:
+                    parts_of_speech.append(pos)
+                for sense in entry.get("senses", []):
+                    add_definition(sense.get("definition", ""))
+                    for example in sense.get("examples", []) if isinstance(sense.get("examples", []), list) else []:
+                        add_example(example)
+                    for sub in sense.get("subsenses", []) if isinstance(sense.get("subsenses", []), list) else []:
+                        add_definition(sub.get("definition", ""))
+                        for example in sub.get("examples", []) if isinstance(sub.get("examples", []), list) else []:
+                            add_example(example)
+            if not definitions:
+                failures.append("secondary_no_usable_entry")
+        except urllib.error.HTTPError as exc:
+            failures.append("secondary_http_" + str(exc.code))
+        except (OSError, ValueError, TimeoutError) as exc:
+            failures.append("secondary_" + type(exc).__name__.lower())
+
+    if failures:
         import logging
-        logging.warning("Dictionary lookup failed for session %s (%s)", session_id, failure)
+        logging.warning("Dictionary lookup for session %s word %r: %s", session_id, word, ",".join(failures))
 
     local_definition, local_example, local_pos = local if local else (None, None, None)
     definition = definitions[0] if definitions else local_definition
     example = examples[0] if examples else local_example
     pos = parts_of_speech[0] if parts_of_speech else local_pos
-    meaning = definition or f"A {len(word)}-letter word beginning with {word[0].upper()}."
-    if difficulty == "hard":
-        hint = (pos or "Word").capitalize()
-    elif difficulty == "medium":
-        hint = definition or f"A {len(word)}-letter word beginning with {word[0].upper()}."
+
+    # Never invent a definition from the word's length or first letter.
+    if definition:
+        meaning = definition
+        if difficulty == "hard":
+            hint = (pos or "Word").capitalize()
+        elif difficulty == "medium":
+            hint = definition
+        else:
+            hint = definition + (" Example: " + example if example else "")
+        source = "dictionaryapi.dev" if definitions else "offline"
     else:
-        hint = definition or f"A {len(word)}-letter word beginning with {word[0].upper()}."
-        if example:
-            hint += " Example: " + example
-    source = "dictionary_api" if definitions or parts_of_speech else ("offline" if local else "fallback")
-    return {"hint": hint, "meaning": meaning, "part_of_speech": pos, "hint_source": source}
+        meaning = "A reliable definition could not be loaded for this word right now."
+        hint = "No reliable clue is available right now. Please end this round and start another."
+        source = "unavailable"
+    return {
+        "hint": hint,
+        "meaning": meaning,
+        "part_of_speech": pos,
+        "hint_source": source,
+        "hint_attribution": "FreeDictionaryAPI.com (Wiktionary) may be used as a backup definition source."
+    }
