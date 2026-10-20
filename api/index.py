@@ -16,6 +16,7 @@ app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 8
 WORD_BANK_VERSION = "curated-common-english-v6"
 _DB_INITIALIZED = False
+_HINT_CACHE = {}
 DIFFICULTIES = {"easy", "medium", "hard"}
 ROUND_REWARD = {"easy": 100, "medium": 250, "hard": 500}
 WRONG_PENALTY = {"easy": 10, "medium": 20, "hard": 40}
@@ -316,6 +317,10 @@ def word_hint(session_id: int):
     finally:
         conn.close()
 
+    cache_key = (word.lower(), difficulty)
+    if cache_key in _HINT_CACHE:
+        return dict(_HINT_CACHE[cache_key])
+
     # Reviewed offline clues protect common words if both external services are unavailable.
     local_hints = {
         "ciao": ("An informal Italian greeting used to say hello or goodbye.", "You might say this when arriving at or leaving a friend's place.", "interjection"),
@@ -338,6 +343,7 @@ def word_hint(session_id: int):
     local = local_hints.get(word.lower())
     definitions, examples, parts_of_speech = [], [], []
     failures = []
+    provider = None
 
     def clean_text(value, limit):
         value = re.sub(r"\s+", " ", str(value or "")).strip()
@@ -369,6 +375,8 @@ def word_hint(session_id: int):
                 for item in meaning.get("definitions", []):
                     add_definition(item.get("definition", ""))
                     add_example(item.get("example", ""))
+        if definitions:
+            provider = "dictionaryapi.dev"
         if not definitions and not parts_of_speech:
             failures.append("primary_no_usable_entry")
     except urllib.error.HTTPError as exc:
@@ -396,7 +404,9 @@ def word_hint(session_id: int):
                         add_definition(sub.get("definition", ""))
                         for example in sub.get("examples", []) if isinstance(sub.get("examples", []), list) else []:
                             add_example(example)
-            if not definitions:
+            if definitions:
+                provider = "freedictionaryapi.com / Wiktionary"
+            else:
                 failures.append("secondary_no_usable_entry")
         except urllib.error.HTTPError as exc:
             failures.append("secondary_http_" + str(exc.code))
@@ -421,15 +431,18 @@ def word_hint(session_id: int):
             hint = definition
         else:
             hint = definition + (" Example: " + example if example else "")
-        source = "dictionaryapi.dev" if definitions else "offline"
+        source = provider or "offline"
     else:
         meaning = "A reliable definition could not be loaded for this word right now."
         hint = "No reliable clue is available right now. Please end this round and start another."
         source = "unavailable"
-    return {
+    result = {
         "hint": hint,
         "meaning": meaning,
         "part_of_speech": pos,
         "hint_source": source,
         "hint_attribution": "FreeDictionaryAPI.com (Wiktionary) may be used as a backup definition source."
     }
+    # Cache by word and difficulty so the modal and hint panel do not repeat provider requests.
+    _HINT_CACHE[cache_key] = result
+    return dict(result)
