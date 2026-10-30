@@ -139,7 +139,7 @@ class AuthRequest(BaseModel):
 
 
 def normalize_player_name(name):
-    cleaned = re.sub(r"\\s+", " ", name).strip()
+    cleaned = re.sub(r"\s+", " ", name).strip()
     if not cleaned or len(cleaned) > 40 or not re.search(r"[A-Za-z0-9]", cleaned):
         raise HTTPException(status_code=400, detail="Enter a name using 1–40 characters.")
     return cleaned, cleaned.casefold()
@@ -282,21 +282,31 @@ def logout_account(authorization: str | None = Header(default=None, alias="Autho
 
 @app.get("/new-game")
 @app.get("/api/new-game")
-def new_game(difficulty: str = "easy", player_name: str = ""):
+def new_game(difficulty: str = "easy", player_name: str = "", authorization: str | None = Header(default=None, alias="Authorization")):
     difficulty = difficulty.lower()
     if difficulty not in DIFFICULTIES:
         raise HTTPException(status_code=400, detail="Choose easy, medium, or hard.")
-    player_name = re.sub(r"\s+", " ", player_name).strip()
-    if not player_name or len(player_name) > 40 or not re.search(r"[A-Za-z0-9]", player_name):
-        raise HTTPException(status_code=400, detail="Enter a player name (1–40 characters) before starting.")
-    normalized = player_name.casefold()
+    player_name, normalized = normalize_player_name(player_name)
     conn = get_connection()
     try:
         init_db(conn)
         with conn.cursor() as cur:
-            cur.execute("""INSERT INTO players(name,normalized_name) VALUES (%s,%s)
-                ON CONFLICT(normalized_name) DO UPDATE SET name=EXCLUDED.name RETURNING id""", (player_name, normalized))
-            player_id = cur.fetchone()[0]
+            auth_player = resolve_auth_player(cur, authorization)
+            cur.execute("SELECT id,account_type FROM players WHERE normalized_name=%s FOR UPDATE", (normalized,))
+            existing = cur.fetchone()
+            if existing and existing[1] == "protected":
+                if not auth_player or auth_player[0] != existing[0]:
+                    raise HTTPException(status_code=401, detail="This name is protected. Sign in to its account before playing.")
+                player_id = existing[0]
+            elif existing:
+                if auth_player:
+                    raise HTTPException(status_code=403, detail="A protected account cannot play under a Public name.")
+                player_id = existing[0]
+            else:
+                if auth_player:
+                    raise HTTPException(status_code=403, detail="Use the name attached to your signed-in account.")
+                cur.execute("INSERT INTO players(name,normalized_name,account_type) VALUES (%s,%s,'public') RETURNING id", (player_name, normalized))
+                player_id = cur.fetchone()[0]
             bounds = {"easy": (4, 5), "medium": (6, 8), "hard": (9, 20)}
             low, high = bounds[difficulty]
             cur.execute("""SELECT word FROM words
