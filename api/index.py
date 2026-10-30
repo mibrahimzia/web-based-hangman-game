@@ -345,7 +345,7 @@ def new_game(difficulty: str = "easy", player_name: str = "", authorization: str
 
 @app.post("/guess")
 @app.post("/api/guess")
-def guess(payload: GuessRequest):
+def guess(payload: GuessRequest, authorization: str | None = Header(default=None, alias="Authorization")):
     letter = payload.letter.strip().lower()
     if len(letter) != 1 or letter not in "abcdefghijklmnopqrstuvwxyz":
         raise HTTPException(status_code=400, detail="Enter one letter from A to Z.")
@@ -359,6 +359,7 @@ def guess(payload: GuessRequest):
             if not row:
                 raise HTTPException(status_code=404, detail="Game session not found. Start a new round.")
             word, stored, wrong, status, difficulty, player_id, score, player_name, score_committed = row
+            enforce_session_owner(cur, player_id, authorization)
             guessed = set(stored.split(",")) if stored else set()
             total_score = current_streak = highest_streak = 0
             if status == "playing" and letter not in guessed:
@@ -410,28 +411,33 @@ def leaderboard():
         init_db(conn)
         with conn.cursor() as cur:
             cur.execute("""SELECT p.name,p.total_score,p.highest_streak,p.current_streak,
-                    COALESCE(latest.difficulty,'easy')
+                    COALESCE(latest.difficulty,'easy'),p.account_type
                 FROM players p
                 LEFT JOIN LATERAL (
                     SELECT gs.difficulty FROM game_sessions gs
                     WHERE gs.player_id=p.id ORDER BY gs.id DESC LIMIT 1
                 ) latest ON TRUE
                 WHERE p.total_score > 0 OR p.highest_streak > 0
-                ORDER BY p.total_score DESC,p.highest_streak DESC,p.name ASC LIMIT 50""")
+                ORDER BY p.total_score DESC,p.highest_streak DESC,p.name ASC LIMIT 100""")
             rows = cur.fetchall()
         return [{"player_name": r[0], "score": r[1], "highest_streak": r[2],
-                 "current_streak": r[3], "difficulty": r[4]} for r in rows]
+                 "current_streak": r[3], "difficulty": r[4], "verified": r[5] == "protected", "section": "verified" if r[5] == "protected" else "public"} for r in rows]
     finally:
         conn.close()
 
 
 @app.post("/end-game/{session_id}")
 @app.post("/api/end-game/{session_id}")
-def end_game(session_id: int):
+def end_game(session_id: int, authorization: str | None = Header(default=None, alias="Authorization")):
     """Abandon an in-progress round without treating it as a loss."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            cur.execute("SELECT player_id FROM game_sessions WHERE id=%s FOR UPDATE", (session_id,))
+            owner = cur.fetchone()
+            if not owner:
+                raise HTTPException(status_code=404, detail="Game session not found.")
+            enforce_session_owner(cur, owner[0], authorization)
             cur.execute("""UPDATE game_sessions SET status='abandoned'
                 WHERE id=%s AND status='playing' RETURNING id""", (session_id,))
             row = cur.fetchone()
@@ -453,16 +459,18 @@ def end_game(session_id: int):
 
 @app.get("/hint/{session_id}")
 @app.get("/api/hint/{session_id}")
-def word_hint(session_id: int):
+def word_hint(session_id: int, authorization: str | None = Header(default=None, alias="Authorization")):
     """Return a useful difficulty-adjusted clue, trying two dictionary providers before offline clues."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word,difficulty FROM game_sessions WHERE id=%s", (session_id,))
+            cur.execute("SELECT word,difficulty,player_id FROM game_sessions WHERE id=%s", (session_id,))
             row = cur.fetchone()
+            if row:
+                enforce_session_owner(cur, row[2], authorization)
             if not row:
                 raise HTTPException(status_code=404, detail="Game session not found.")
-            word, difficulty = row
+            word, difficulty = row[0], row[1]
     finally:
         conn.close()
 
