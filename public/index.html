@@ -10,25 +10,21 @@
 <div class="top-actions"><button id="theme-toggle" class="quiet-button" type="button" aria-label="Toggle light and dark mode">Dark mode</button><button id="style-toggle" class="quiet-button" type="button" aria-label="Switch visual style">Typewriter style</button><button id="leader-toggle" class="quiet-button menu-toggle" type="button" aria-expanded="true" aria-controls="leader-panel"><span class="menu-lines" aria-hidden="true"></span><span>Leaderboard</span></button></div>
 </header>
 <main>
-<section class="intro"><p class="eyebrow">ROUND 01 / WORD GAME</p><h1>One word.<br><span>Eight chances.</span></h1><p class="intro-copy">A little curiosity goes a long way.</p></section>
+<section class="intro"><p class="eyebrow">ROUND 01 / WORD GAME</p><h1>One word.<br><span>Six chances.</span></h1><p class="intro-copy">A little curiosity goes a long way.</p></section>
 <div class="game-layout" id="game-layout">
 <section class="panel drawing-panel" aria-label="Hangman drawing">
-<div class="panel-top"><div><p class="eyebrow">THE GALLOWS</p><h2>Wrong guesses</h2></div><span class="counter"><b id="wrong">0</b> / 7</span></div>
-<svg id="hangman" class="hangman" viewBox="0 0 260 300" role="img" aria-label="Hangman drawing. No figure parts drawn yet.">
+<div class="panel-top"><div><p class="eyebrow">THE GALLOWS</p><h2>Wrong guesses</h2></div><span class="counter"><b id="wrong">0</b> / 6</span></div>
+<svg id="hangman" class="hangman" viewBox="0 0 260 300" role="img" aria-label="Hangman drawing. The gallows is fixed in place.">
 <path class="gallows" d="M24 276 H194"/>
-<path class="person-part stand-part" data-part="1" d="M58 24 H194"/>
-<path class="person-part stand-part" data-part="2" d="M58 276 V24"/>
-<path class="person-part stand-part" data-part="3" d="M58 78 L112 24"/>
-<circle class="person-part" data-part="4" cx="170" cy="72" r="22"/>
-<path class="person-part" data-part="5" d="M170 94 V160"/>
-<g class="person-part" data-part="6">
-  <path d="M170 112 L140 140"/>
-  <path d="M170 112 L200 140"/>
-</g>
-<g class="person-part" data-part="7">
-  <path d="M170 160 L142 207"/>
-  <path d="M170 160 L198 207"/>
-</g>
+<path class="stand-part person-part drawn" data-part="stand" d="M58 24 H194"/>
+<path class="stand-part person-part drawn" data-part="stand" d="M58 276 V24"/>
+<path class="stand-part person-part drawn" data-part="stand" d="M58 78 L112 24"/>
+<circle class="person-part" data-part="1" cx="170" cy="72" r="22"/>
+<path class="person-part" data-part="2" d="M170 94 V160"/>
+<path class="person-part" data-part="3" d="M170 112 L140 140"/>
+<path class="person-part" data-part="4" d="M170 112 L200 140"/>
+<path class="person-part" data-part="5" d="M170 160 L142 207"/>
+<path class="person-part" data-part="6" d="M170 160 L198 207"/>
 </svg>
 
 </section>
@@ -42,7 +38,7 @@
 <div class="account-actions"><button id="create-account" class="quiet-button" type="button">Create protected account</button><button id="sign-in" class="quiet-button" type="button">Sign in</button><button id="sign-out" class="quiet-button" type="button" hidden>Sign out</button></div>
 <p id="account-help" class="account-help">You can start a Public game without an account. Passwords are never stored in this browser.</p>
 </section>
-<div class="word-area"><div class="word-meta"><span>HIDDEN WORD</span><span><b id="left">7</b> chances left · ROUND <b id="current-score">100 pts</b> · LIFETIME <b id="lifetime-score">0 pts</b></span></div><div id="word" class="word" aria-label="Hidden word">_ _ _ _ _</div><div class="hint-box"><span class="hint-label">HINT</span><p id="hint">Start a game to reveal your hint.</p></div></div>
+<div class="word-area"><div class="word-meta"><span>HIDDEN WORD</span><span><b id="left">6</b> chances left · ROUND <b id="current-score">100 pts</b> · LIFETIME <b id="lifetime-score">0 pts</b></span></div><div id="word" class="word" aria-label="Hidden word">_ _ _ _ _</div><div class="hint-box"><span class="hint-label">HINT</span><p id="hint">Start a game to reveal your hint.</p></div></div>
 <div class="keyboard-heading"><h3>Choose a letter</h3><span>Keyboard works too</span></div><div id="keyboard" class="keyboard" aria-label="Letter buttons"></div>
 <p class="tried-line">Letters tried <span id="guessed">None yet</span></p>
 <p id="score-message" class="score-message" aria-live="polite"></p>
@@ -53,7 +49,7 @@
 <p class="muted">Lifetime points · 🔥 shows the overall streak across all difficulties.</p><button id="refresh" class="refresh-button" type="button">Refresh scores ↻</button><p id="board-status" class="board-status" aria-live="polite">Loading scores…</p><section class="board-group"><h3>Public</h3><ol id="public-scores" class="scores"></ol></section><section class="board-group"><h3>Verified</h3><ol id="verified-scores" class="scores"></ol></section><p class="board-foot">Press Tab to move through the game. Use the menu to reopen this panel.</p>
 </aside>
 </div>
-<section class="rules"><div><span>01</span><b>Pick a level</b><p>Each level changes the word length and hint.</p></div><div><span>02</span><b>Use your chances</b><p>Seven incorrect guesses. Repeated letters are free.</p></div><div><span>03</span><b>Earn your score</b><p>Win words to add points. Wrong guesses reduce only this round’s reward.</p></div></section>
+<section class="rules"><div><span>01</span><b>Pick a level</b><p>Each level changes the word length and hint.</p></div><div><span>02</span><b>Use your chances</b><p>Six incorrect guesses. Repeated letters are free.</p></div><div><span>03</span><b>Earn your score</b><p>Win words to add points. Wrong guesses reduce only this round’s reward.</p></div></section>
 <footer>WORD HUNT <span>·</span> EF101-P01 <span>·</span> Backup definitions: <a href="https://freedictionaryapi.com/" target="_blank" rel="noopener noreferrer">FreeDictionaryAPI.com</a> / <a href="https://en.wiktionary.org/" target="_blank" rel="noopener noreferrer">Wiktionary</a></footer>
 </main>
 <div id="round-modal" class="round-modal" hidden role="dialog" aria-modal="true" aria-labelledby="round-modal-title">
