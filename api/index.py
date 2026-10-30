@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Word Hunt API")
-MAX_ATTEMPTS = 7
+MAX_ATTEMPTS = 6
 WORD_BANK_VERSION = "child-safe-curated-v7"
 _DB_INITIALIZED = False
 _HINT_CACHE = {}
