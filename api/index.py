@@ -133,6 +133,70 @@ class GuessRequest(BaseModel):
     session_id: int
     letter: str = Field(min_length=1, max_length=8)
 
+class AuthRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    password: str = Field(min_length=8, max_length=128)
+
+
+def normalize_player_name(name):
+    cleaned = re.sub(r"\\s+", " ", name).strip()
+    if not cleaned or len(cleaned) > 40 or not re.search(r"[A-Za-z0-9]", cleaned):
+        raise HTTPException(status_code=400, detail="Enter a name using 1–40 characters.")
+    return cleaned, cleaned.casefold()
+
+
+def validate_password(password):
+    if len(password) < 8 or not re.search(r"[A-Z]", password) or not re.search(r"[0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters and include one uppercase letter and one number.")
+
+
+def make_password_hash(password):
+    salt = secrets.token_bytes(16)
+    rounds = 310000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
+    return "pbkdf2_sha256$" + str(rounds) + "$" + salt.hex() + "$" + digest.hex()
+
+
+def check_password(password, encoded):
+    try:
+        scheme, rounds, salt_hex, digest_hex = encoded.split("$")
+        if scheme != "pbkdf2_sha256":
+            return False
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(rounds))
+        return hmac.compare_digest(actual.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
+
+
+def bearer_token(authorization):
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    return token.strip() if scheme.lower() == "bearer" and token.strip() else None
+
+
+def resolve_auth_player(cur, authorization):
+    token = bearer_token(authorization)
+    if not token:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    cur.execute("""SELECT p.id,p.name,p.account_type FROM player_auth_sessions s
+        JOIN players p ON p.id=s.player_id
+        WHERE s.token_hash=%s AND s.expires_at>NOW()""", (token_hash,))
+    return cur.fetchone()
+
+
+def enforce_session_owner(cur, player_id, authorization):
+    if player_id is None:
+        return
+    cur.execute("SELECT account_type FROM players WHERE id=%s", (player_id,))
+    row = cur.fetchone()
+    if row and row[0] == "protected":
+        auth_player = resolve_auth_player(cur, authorization)
+        if not auth_player or auth_player[0] != player_id:
+            raise HTTPException(status_code=401, detail="Sign in to the protected account that started this round.")
+
+
 
 @app.get("/health")
 @app.get("/api/health")
