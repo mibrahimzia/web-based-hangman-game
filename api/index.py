@@ -89,6 +89,11 @@ def init_db(conn=None):
                     WHEN 'easy' THEN 100 WHEN 'medium' THEN 250 WHEN 'hard' THEN 500 ELSE 0 END
                     WHERE status='playing'""")
                 cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('lifetime-score-v1')")
+            cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='fair-start-auth-v1'")
+            if not cur.fetchone():
+                cur.execute("DELETE FROM game_sessions")
+                cur.execute("DELETE FROM players")
+                cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('fair-start-auth-v1')")
             cur.execute("""CREATE TABLE IF NOT EXISTS word_bank_meta (
                 id INTEGER PRIMARY KEY CHECK (id = 1), version TEXT NOT NULL, imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
             cur.execute("SELECT version FROM word_bank_meta WHERE id=1")
