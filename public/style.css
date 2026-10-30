@@ -86,3 +86,10 @@ main{padding:22px 0 0}.intro{position:relative;padding:24px 28px 29px;margin-bot
 @media(prefers-reduced-motion:reduce){.round-modal,.round-card,.guess-celebration{animation:none!important}}
 
 #new-game[hidden]{display:none!important}
+
+.account-box{margin:16px 0;padding:15px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,var(--accent-soft),var(--panel) 75%)}
+.account-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.account-heading h3,.board-group h3{font-size:13px;margin:5px 0}.account-status{font-size:10px;font-weight:750;color:var(--accent);white-space:nowrap}
+.account-fields{display:flex;gap:10px;margin-top:10px}.account-fields label{display:grid;gap:6px;flex:1;color:var(--muted);font-size:11px;font-weight:700}
+.account-fields input{width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.account-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.account-help{font-size:10px;color:var(--muted);margin:10px 0 0;line-height:1.45}
+.board-group{margin-top:14px}.board-group h3{padding-bottom:7px;border-bottom:1px solid var(--line);color:var(--accent)}
