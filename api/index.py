@@ -2,6 +2,9 @@
 import os
 import re
 import json
+import secrets
+import hashlib
+import hmac
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -9,12 +12,12 @@ from pathlib import Path
 
 import psycopg2
 from psycopg2.extras import execute_values
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Word Hunt API")
-MAX_ATTEMPTS = 8
-WORD_BANK_VERSION = "curated-common-english-v6"
+MAX_ATTEMPTS = 7
+WORD_BANK_VERSION = "child-safe-curated-v7"
 _DB_INITIALIZED = False
 _HINT_CACHE = {}
 DIFFICULTIES = {"easy", "medium", "hard"}
@@ -59,6 +62,12 @@ def init_db(conn=None):
             cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS total_score INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS current_streak INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS highest_streak INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'public'")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS password_hash TEXT")
+            cur.execute("""CREATE TABLE IF NOT EXISTS player_auth_sessions (
+                id SERIAL PRIMARY KEY, player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE, expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
             cur.execute("""CREATE TABLE IF NOT EXISTS game_sessions (
                 id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL,
                 guessed_letters TEXT NOT NULL DEFAULT '', wrong_count INTEGER NOT NULL DEFAULT 0,
