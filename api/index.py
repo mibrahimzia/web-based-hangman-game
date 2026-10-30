@@ -214,6 +214,72 @@ def health():
         conn.close()
 
 
+@app.post("/api/auth/register")
+def register_account(payload: AuthRequest):
+    name, normalized = normalize_player_name(payload.name)
+    validate_password(payload.password)
+    conn = get_connection()
+    try:
+        init_db(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT id,account_type FROM players WHERE normalized_name=%s FOR UPDATE", (normalized,))
+            existing = cur.fetchone()
+            if existing:
+                if existing[1] == "public":
+                    raise HTTPException(status_code=409, detail="That name is already in use as a Public name. Choose another name.")
+                raise HTTPException(status_code=409, detail="That protected name already exists. Sign in instead.")
+            cur.execute("""INSERT INTO players(name,normalized_name,account_type,password_hash)
+                VALUES (%s,%s,'protected',%s) RETURNING id""", (name, normalized, make_password_hash(payload.password)))
+            player_id = cur.fetchone()[0]
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            cur.execute("INSERT INTO player_auth_sessions(player_id,token_hash,expires_at) VALUES (%s,%s,NOW()+INTERVAL '30 days')", (player_id, token_hash))
+        conn.commit()
+        return {"auth_token": token, "player_name": name, "verified": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/auth/login")
+def login_account(payload: AuthRequest):
+    name, normalized = normalize_player_name(payload.name)
+    conn = get_connection()
+    try:
+        init_db(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT id,name,account_type,password_hash FROM players WHERE normalized_name=%s", (normalized,))
+            row = cur.fetchone()
+            if not row or row[2] != "protected" or not row[3] or not check_password(payload.password, row[3]):
+                raise HTTPException(status_code=401, detail="Name or password is incorrect.")
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            cur.execute("INSERT INTO player_auth_sessions(player_id,token_hash,expires_at) VALUES (%s,%s,NOW()+INTERVAL '30 days')", (row[0], token_hash))
+        conn.commit()
+        return {"auth_token": token, "player_name": row[1], "verified": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/auth/logout")
+def logout_account(authorization: str | None = Header(default=None, alias="Authorization")):
+    token = bearer_token(authorization)
+    if token:
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM player_auth_sessions WHERE token_hash=%s", (hashlib.sha256(token.encode("utf-8")).hexdigest(),))
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": True}
+
+
 @app.get("/new-game")
 @app.get("/api/new-game")
 def new_game(difficulty: str = "easy", player_name: str = ""):
