@@ -146,3 +146,237 @@ body{background:radial-gradient(ellipse at 50% 25%,#174b78 0,transparent 42%),li
 
 .top-actions button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
 .top-actions svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+
+/* Cosmetic correction: distinct, balanced light/dark Hangaroo and true typewriter paper */
+@import url("https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Special+Elite&display=swap");
+
+/* Hangaroo LIGHT: bright, readable arcade palette (default when dark mode is off). */
+:root:not(.theme-dark):not(.theme-typewriter){
+ color-scheme:light;
+ --page:#eaf2fb;--panel:#ffffff;--ink:#142b45;--muted:#5b6f86;--line:#cbd9e8;
+ --accent:#1769aa;--accent-strong:#124f83;--accent-soft:#e1effb;
+ --good:#16764e;--bad:#bd4d4d;--sun:#f0b84c;
+ --shadow:0 12px 32px #17365314;--lift:0 5px 16px #17365310;
+}
+:root:not(.theme-dark):not(.theme-typewriter) body{
+ background:#eaf2fb;
+ background-image:radial-gradient(ellipse at 50% 0%,#d8e9fb 0,transparent 58%);
+ color:var(--ink);
+}
+:root:not(.theme-dark):not(.theme-typewriter) .topbar{
+ background:#f7faffed;border-bottom:1px solid #cbd9e8;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .intro{
+ background:#dceafa;border:1px solid #b7cde5;box-shadow:var(--shadow);
+}
+:root:not(.theme-dark):not(.theme-typewriter) .intro h1{color:#183b5e}
+:root:not(.theme-dark):not(.theme-typewriter) .intro h1 span{color:#1769aa}
+:root:not(.theme-dark):not(.theme-typewriter) .intro-copy{color:#506b88}
+:root:not(.theme-dark):not(.theme-typewriter) .panel{
+ background:#fff;border:1px solid #cbd9e8;box-shadow:var(--shadow);
+}
+:root:not(.theme-dark):not(.theme-typewriter) .panel:before{background:#4c91c9;height:3px}
+:root:not(.theme-dark):not(.theme-typewriter) .counter,
+:root:not(.theme-dark):not(.theme-typewriter) .pill,
+:root:not(.theme-dark):not(.theme-typewriter) .meaning-panel{
+ background:#edf4fb;color:#34516f;border:1px solid #d3e0ed;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .hint-box{
+ background:transparent!important;border:0!important;border-top:1px solid #d8e2ec!important;
+ box-shadow:none!important;border-radius:0!important;padding:12px 0 0;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .hint-label{
+ color:#3f5f7d;background:#e8f0f7;border:1px solid #d3e0ed;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .word-area{
+ background:#f5f9fd;border:1px solid #d6e2ee;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .keyboard button{
+ background:#f2f6fb;color:#203b57;border:1px solid #cbd9e8;box-shadow:0 2px 0 #d8e2ec;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .keyboard button:hover:not(:disabled){
+ background:#dceafa;border-color:#8db4d8;box-shadow:0 3px 0 #c0d5e8;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .primary-button{
+ background:#1769aa;color:white;box-shadow:0 3px 0 #104c7c;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .quiet-button,
+:root:not(.theme-dark):not(.theme-typewriter) .refresh-button,
+:root:not(.theme-dark):not(.theme-typewriter) .icon-button{
+ background:#f7faff;color:#244563;border:1px solid #c2d3e5;box-shadow:0 2px 0 #d9e3ed;
+}
+:root:not(.theme-dark):not(.theme-typewriter) .rules>div{
+ background:#fff;border:1px solid #d2deea;box-shadow:var(--lift);
+}
+:root:not(.theme-dark):not(.theme-typewriter) .rules>div:nth-child(1),
+:root:not(.theme-dark):not(.theme-typewriter) .rules>div:nth-child(2),
+:root:not(.theme-dark):not(.theme-typewriter) .rules>div:nth-child(3){background:#f7faff}
+:root:not(.theme-dark):not(.theme-typewriter) .leaderboard-panel,
+:root:not(.theme-dark):not(.theme-typewriter) .scores li{background:#fff;color:var(--ink);border-color:#d4e0ec}
+:root:not(.theme-dark):not(.theme-typewriter) .round-card,
+:root:not(.theme-dark):not(.theme-typewriter) .account-card{background:#fff;color:var(--ink);border:1px solid #cbd9e8}
+
+/* Hangaroo DARK: deep navy, but controlled surfaces and no muddy gradients. */
+:root.theme-dark:not(.theme-typewriter){
+ color-scheme:dark;
+ --page:#081525;--panel:#10243a;--ink:#eaf2fb;--muted:#a8b9cc;--line:#29415a;
+ --accent:#72b9f2;--accent-strong:#a6d4fa;--accent-soft:#183652;
+ --good:#78d4a8;--bad:#ff9b91;--sun:#e9bd69;
+ --shadow:0 14px 36px #0004;--lift:0 6px 18px #0003;
+}
+:root.theme-dark:not(.theme-typewriter) body{background:#081525;color:var(--ink)}
+:root.theme-dark:not(.theme-typewriter) .topbar{background:#091a2cf5;border-bottom:1px solid #29415a}
+:root.theme-dark:not(.theme-typewriter) .intro{background:#112b45;border:1px solid #355675;box-shadow:var(--shadow)}
+:root.theme-dark:not(.theme-typewriter) .intro h1{color:#f0f6fc}
+:root.theme-dark:not(.theme-typewriter) .intro h1 span{color:#83c5f7}
+:root.theme-dark:not(.theme-typewriter) .intro-copy{color:#b3c7da}
+:root.theme-dark:not(.theme-typewriter) .panel{background:#10243a;border:1px solid #29415a;box-shadow:var(--shadow)}
+:root.theme-dark:not(.theme-typewriter) .panel:before{background:#4e8fbe;height:3px}
+:root.theme-dark:not(.theme-typewriter) .counter,
+:root.theme-dark:not(.theme-typewriter) .pill,
+:root.theme-dark:not(.theme-typewriter) .meaning-panel{background:#172f49;color:#dceafa;border:1px solid #35516e}
+:root.theme-dark:not(.theme-typewriter) .hint-box{
+ background:transparent!important;border:0!important;border-top:1px solid #29415a!important;
+ box-shadow:none!important;border-radius:0!important;padding:12px 0 0;
+}
+:root.theme-dark:not(.theme-typewriter) .hint-label{background:#203b55;color:#c4d9ec;border:1px solid #3b5874}
+:root.theme-dark:not(.theme-typewriter) .word-area{background:#0d2035;border:1px solid #29415a}
+:root.theme-dark:not(.theme-typewriter) .keyboard button{background:#19334d;color:#e7f1fa;border:1px solid #36516b;box-shadow:0 2px 0 #071321}
+:root.theme-dark:not(.theme-typewriter) .keyboard button:hover:not(:disabled){background:#254765;border-color:#5c8db7}
+:root.theme-dark:not(.theme-typewriter) .primary-button{background:#286b9f;color:#fff;box-shadow:0 3px 0 #174568}
+:root.theme-dark:not(.theme-typewriter) .quiet-button,
+:root.theme-dark:not(.theme-typewriter) .refresh-button,
+:root.theme-dark:not(.theme-typewriter) .icon-button{background:#172d44;color:#eaf2fb;border:1px solid #35516e;box-shadow:0 2px 0 #071321}
+:root.theme-dark:not(.theme-typewriter) .rules>div{background:#10243a;border:1px solid #29415a;box-shadow:var(--lift)}
+:root.theme-dark:not(.theme-typewriter) .rules>div:nth-child(1),
+:root.theme-dark:not(.theme-typewriter) .rules>div:nth-child(2),
+:root.theme-dark:not(.theme-typewriter) .rules>div:nth-child(3){background:#132a42}
+:root.theme-dark:not(.theme-typewriter) .leaderboard-panel,
+:root.theme-dark:not(.theme-typewriter) .scores li{background:#10243a;color:var(--ink);border-color:#29415a}
+:root.theme-dark:not(.theme-typewriter) .round-card,
+:root.theme-dark:not(.theme-typewriter) .account-card{background:#10243a;color:var(--ink);border:1px solid #35516e}
+
+/* Typewriter: actual monospaced type, ruled paper, restrained ink and paper surfaces. */
+:root.theme-typewriter{
+ --page:#e8e8df;--panel:#fffef8;--ink:#252a30;--muted:#606a72;--line:#c9d0d3;
+ --accent:#354e68;--accent-strong:#263d55;--accent-soft:#edf1f2;
+ --good:#356b50;--bad:#9c4545;--sun:#d1b66d;
+ --shadow:0 8px 22px #29323a12;--lift:0 3px 10px #29323a0d;color-scheme:light;
+ font-family:"Courier Prime","Courier New",monospace;
+}
+:root.theme-typewriter body{
+ font-family:"Courier Prime","Courier New",monospace;
+ background-color:#e8e8df;
+ background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,#a8b9c322 32px),linear-gradient(90deg,#d9dedb,#f0f0e9 16%,#f0f0e9 84%,#d9dedb);
+ color:#252a30;
+}
+:root.theme-typewriter .topbar{background:#ecece5f5;border-bottom:1px solid #c5ccce}
+:root.theme-typewriter .brand,:root.theme-typewriter .brand small{color:#303a43}
+:root.theme-typewriter .intro{
+ background:repeating-linear-gradient(to bottom,#fffef8 0,#fffef8 30px,#dce4e8 31px,#fffef8 32px);
+ border:1px solid #c4cbca;border-radius:3px;box-shadow:0 5px 16px #29323a12;
+}
+:root.theme-typewriter .intro:after{display:none}
+:root.theme-typewriter .intro h1,
+:root.theme-typewriter .intro h1 span{font-family:"Special Elite","Courier Prime",monospace;color:#252a30;letter-spacing:0;font-weight:400}
+:root.theme-typewriter .intro-copy{font-family:"Courier Prime",monospace;color:#58636c}
+:root.theme-typewriter .eyebrow{font-family:"Courier Prime",monospace;color:#58636c;letter-spacing:.12em}
+:root.theme-typewriter .panel,
+:root.theme-typewriter .round-card,
+:root.theme-typewriter .account-card{
+ background:repeating-linear-gradient(to bottom,#fffefb 0,#fffefb 30px,#e1e7e8 31px,#fffefb 32px);
+ border:1px solid #c3ccce;border-radius:3px;box-shadow:0 5px 16px #29323a12;
+}
+:root.theme-typewriter .panel:before{background:#8797a1;height:2px}
+:root.theme-typewriter .panel-top h2,
+:root.theme-typewriter .keyboard-heading h3,
+:root.theme-typewriter .rules b,
+:root.theme-typewriter .round-card h2{font-family:"Special Elite","Courier Prime",monospace;font-weight:400;letter-spacing:0}
+:root.theme-typewriter .counter,
+:root.theme-typewriter .pill,
+:root.theme-typewriter .meaning-panel,
+:root.theme-typewriter .word-area{
+ background:#f4f5ef;color:#303941;border:1px solid #d0d7d7;border-radius:2px;box-shadow:none;
+}
+:root.theme-typewriter .hint-box{
+ background:transparent!important;border:0!important;border-top:1px solid #d2d9da!important;
+ box-shadow:none!important;border-radius:0!important;padding:12px 0 0;
+}
+:root.theme-typewriter .hint-box p{font-family:"Courier Prime",monospace;color:#4d5961}
+:root.theme-typewriter .hint-label{background:transparent;color:#4d5961;border:1px solid #c5cdcf;border-radius:0;font-family:"Courier Prime",monospace}
+:root.theme-typewriter .word{font-family:"Courier Prime",monospace;color:#252a30;font-weight:700;letter-spacing:.1em}
+:root.theme-typewriter .keyboard button,
+:root.theme-typewriter .quiet-button,
+:root.theme-typewriter .refresh-button,
+:root.theme-typewriter .icon-button,
+:root.theme-typewriter .account-tab{
+ font-family:"Courier Prime",monospace;background:#f5f5ef;color:#303941;border:1px solid #bfc9cb;border-radius:2px;box-shadow:0 2px 0 #d4d9d7;
+}
+:root.theme-typewriter .primary-button{
+ font-family:"Courier Prime",monospace;background:#354e68;color:#fff;border:1px solid #263d55;border-radius:2px;box-shadow:0 2px 0 #263d55;text-transform:uppercase;letter-spacing:.04em;
+}
+:root.theme-typewriter .controls select,
+:root.theme-typewriter .controls input,
+:root.theme-typewriter .account-card input{
+ font-family:"Courier Prime",monospace;background:#fffef8;color:#252a30;border:1px solid #bfc9cb;border-radius:2px;box-shadow:none;
+}
+:root.theme-typewriter .rules>div,
+:root.theme-typewriter .rules>div:nth-child(1),
+:root.theme-typewriter .rules>div:nth-child(2),
+:root.theme-typewriter .rules>div:nth-child(3){
+ background:repeating-linear-gradient(to bottom,#fffef8 0,#fffef8 30px,#e1e7e8 31px,#fffef8 32px);
+ border:1px solid #c3ccce;border-radius:3px;box-shadow:none;
+}
+:root.theme-typewriter .leaderboard-panel,
+:root.theme-typewriter .scores li{background:#fffef8;color:#252a30;border:1px solid #cbd2d2;border-radius:2px}
+:root.theme-typewriter .scores .podium-1,
+:root.theme-typewriter .scores .podium-2,
+:root.theme-typewriter .scores .podium-3{background:#f2f3ed;border-color:#cbd2d2}
+:root.theme-typewriter .gallows{stroke:#65727a}
+:root.theme-typewriter .stand-part{stroke:#65727a}
+:root.theme-typewriter .round-modal{background:#252a305c;backdrop-filter:blur(2px)}
+:root.theme-typewriter .toast{font-family:"Courier Prime",monospace;background:#252a30;color:#fff;border:1px solid #69757b}
+
+/* Dark typewriter keeps paper texture without reverting to sepia/cowboy styling. */
+:root.theme-typewriter.theme-dark{--page:#20272c;--panel:#293238;--ink:#e6ecee;--muted:#b4c0c5;--line:#48565e;--accent:#a9c5d8;--accent-strong:#c7dbe8;--accent-soft:#34434b;--shadow:0 8px 22px #0004;--lift:0 3px 10px #0003;color-scheme:dark}
+:root.theme-typewriter.theme-dark body{
+ background-color:#20272c;
+ background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,#9eb2bd16 32px),linear-gradient(90deg,#1d252a,#283137 16%,#283137 84%,#1d252a);
+ color:#e6ecee;
+}
+:root.theme-typewriter.theme-dark .topbar{background:#202a30f5;border-color:#48565e}
+:root.theme-typewriter.theme-dark .brand,:root.theme-typewriter.theme-dark .brand small{color:#e6ecee}
+:root.theme-typewriter.theme-dark .intro,
+:root.theme-typewriter.theme-dark .panel,
+:root.theme-typewriter.theme-dark .round-card,
+:root.theme-typewriter.theme-dark .account-card,
+:root.theme-typewriter.theme-dark .rules>div,
+:root.theme-typewriter.theme-dark .rules>div:nth-child(1),
+:root.theme-typewriter.theme-dark .rules>div:nth-child(2),
+:root.theme-typewriter.theme-dark .rules>div:nth-child(3){
+ background:repeating-linear-gradient(to bottom,#293238 0,#293238 30px,#3a474e 31px,#293238 32px);
+ color:#e6ecee;border-color:#48565e;box-shadow:0 5px 16px #0003;
+}
+:root.theme-typewriter.theme-dark .intro h1,
+:root.theme-typewriter.theme-dark .intro h1 span{color:#e6ecee}
+:root.theme-typewriter.theme-dark .intro-copy,
+:root.theme-typewriter.theme-dark .hint-box p{color:#b4c0c5}
+:root.theme-typewriter.theme-dark .counter,
+:root.theme-typewriter.theme-dark .pill,
+:root.theme-typewriter.theme-dark .meaning-panel,
+:root.theme-typewriter.theme-dark .word-area{background:#303c43;color:#e6ecee;border-color:#48565e}
+:root.theme-typewriter.theme-dark .hint-box{background:transparent!important;border:0!important;border-top:1px solid #48565e!important;box-shadow:none!important}
+:root.theme-typewriter.theme-dark .hint-label{background:transparent;color:#c4d2d8;border-color:#58666d}
+:root.theme-typewriter.theme-dark .word{color:#edf2f3}
+:root.theme-typewriter.theme-dark .keyboard button,
+:root.theme-typewriter.theme-dark .quiet-button,
+:root.theme-typewriter.theme-dark .refresh-button,
+:root.theme-typewriter.theme-dark .icon-button,
+:root.theme-typewriter.theme-dark .account-tab{background:#303c43;color:#e6ecee;border-color:#58666d;box-shadow:0 2px 0 #171e22}
+:root.theme-typewriter.theme-dark .primary-button{background:#526f82;color:#fff;border-color:#718b9c}
+:root.theme-typewriter.theme-dark .controls select,
+:root.theme-typewriter.theme-dark .controls input,
+:root.theme-typewriter.theme-dark .account-card input{background:#202a30;color:#e6ecee;border-color:#58666d}
+:root.theme-typewriter.theme-dark .leaderboard-panel,
+:root.theme-typewriter.theme-dark .scores li{background:#293238;color:#e6ecee;border-color:#48565e}
