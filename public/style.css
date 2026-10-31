@@ -143,3 +143,6 @@ body{background:radial-gradient(ellipse at 50% 25%,#174b78 0,transparent 42%),li
 .account-help{font-size:12px;color:var(--muted);margin:0;line-height:1.5}
 @media(max-width:900px){.topbar{align-items:flex-start;flex-direction:column}.top-actions{width:100%}.top-actions button{flex:1}.game-layout{grid-template-columns:1fr 1fr}.leaderboard-panel{grid-column:1/-1}}
 @media(max-width:600px){.topbar{padding:10px 14px}.top-actions button{font-size:10px;padding:8px 7px}.account-card{padding:22px}.game-layout{grid-template-columns:1fr}}
+
+.top-actions button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.top-actions svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
