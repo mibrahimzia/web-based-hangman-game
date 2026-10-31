@@ -89,6 +89,12 @@ def init_db(conn=None):
                     WHEN 'easy' THEN 100 WHEN 'medium' THEN 250 WHEN 'hard' THEN 500 ELSE 0 END
                     WHERE status='playing'""")
                 cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('lifetime-score-v1')")
+            cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='final-fair-reset-v2'")
+            if not cur.fetchone():
+                cur.execute("DELETE FROM game_sessions")
+                cur.execute("DELETE FROM player_auth_sessions")
+                cur.execute("DELETE FROM players")
+                cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('final-fair-reset-v2')")
             cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='fair-start-auth-v1'")
             if not cur.fetchone():
                 cur.execute("DELETE FROM game_sessions")
