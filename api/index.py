@@ -1,105 +1,617 @@
-"""FastAPI API for the EF101 Hangman game."""
+"""FastAPI backend for Word Hunt. Vocabulary, sessions and scores live in Neon Postgres."""
 import os
+import re
+import json
+import secrets
+import hashlib
+import hmac
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
 import psycopg2
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from psycopg2.extras import execute_values
+from fastapi import FastAPI, HTTPException, Header
+from pydantic import BaseModel, Field
 
-app = FastAPI(title="EF101 Hangman API")
+app = FastAPI(title="Word Hunt API")
 MAX_ATTEMPTS = 6
-BONUS = {"easy": 0, "medium": 20, "hard": 40}
+WORD_BANK_VERSION = "child-safe-curated-v7"
+_DB_INITIALIZED = False
+_HINT_CACHE = {}
+DIFFICULTIES = {"easy", "medium", "hard"}
+ROUND_REWARD = {"easy": 100, "medium": 250, "hard": 500}
+WRONG_PENALTY = {"easy": 10, "medium": 20, "hard": 40}
+DIFFICULTY_RULE = {"easy": "4–5 letters", "medium": "6–8 letters", "hard": "9+ letters"}
 
-def connect():
-    url = os.getenv("DATABASE_URL")
+
+def get_connection():
+    url = os.environ.get("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL environment variable is required")
-    return psycopg2.connect(url)
+        raise HTTPException(status_code=503, detail="DATABASE_URL is missing from Vercel environment variables.")
+    try:
+        return psycopg2.connect(url, connect_timeout=5, sslmode="require")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not connect to Neon. Check the Vercel DATABASE_URL setting.") from exc
 
-def init_db():
-    with connect() as conn:
+
+def init_db(conn=None):
+    """Create schema and import the curated word bank once per warm server process."""
+    global _DB_INITIALIZED
+    owns_connection = conn is None
+    if owns_connection:
+        conn = get_connection()
+    if _DB_INITIALIZED:
+        if owns_connection:
+            conn.close()
+        return
+    try:
         with conn.cursor() as cur:
             cur.execute("""CREATE TABLE IF NOT EXISTS words (
-                id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL
-            )""")
+                id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL,
+                UNIQUE(word, difficulty))""")
+            cur.execute("""CREATE TABLE IF NOT EXISTS players (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(40) NOT NULL,
+                normalized_name VARCHAR(40) NOT NULL UNIQUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                total_score INTEGER NOT NULL DEFAULT 0,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                highest_streak INTEGER NOT NULL DEFAULT 0)""")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS total_score INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS current_streak INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS highest_streak INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'public'")
+            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS password_hash TEXT")
+            cur.execute("""CREATE TABLE IF NOT EXISTS player_auth_sessions (
+                id SERIAL PRIMARY KEY, player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE, expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
             cur.execute("""CREATE TABLE IF NOT EXISTS game_sessions (
                 id SERIAL PRIMARY KEY, word TEXT NOT NULL, difficulty TEXT NOT NULL,
                 guessed_letters TEXT NOT NULL DEFAULT '', wrong_count INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER
-            )""")
-init_db()
+                status TEXT NOT NULL DEFAULT 'playing', player_name TEXT, score INTEGER,
+                player_id INTEGER REFERENCES players(id),
+                score_committed BOOLEAN NOT NULL DEFAULT FALSE)""")
+            cur.execute("ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS player_id INTEGER REFERENCES players(id)")
+            cur.execute("ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS score_committed BOOLEAN NOT NULL DEFAULT FALSE")
+            cur.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
+                migration_key TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+            cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='lifetime-score-v1'")
+            if not cur.fetchone():
+                cur.execute("""UPDATE players p SET total_score=GREATEST(p.total_score,COALESCE((
+                    SELECT MAX(gs.score) FROM game_sessions gs
+                    WHERE gs.player_id=p.id AND gs.status IN ('won','lost') AND gs.score IS NOT NULL
+                ),0))""")
+                cur.execute("UPDATE game_sessions SET score_committed=TRUE WHERE status IN ('won','lost')")
+                cur.execute("""UPDATE game_sessions SET score=CASE difficulty
+                    WHEN 'easy' THEN 100 WHEN 'medium' THEN 250 WHEN 'hard' THEN 500 ELSE 0 END
+                    WHERE status='playing'""")
+                cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('lifetime-score-v1')")
+            cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='final-fair-reset-v2'")
+            if not cur.fetchone():
+                cur.execute("DELETE FROM game_sessions")
+                cur.execute("DELETE FROM player_auth_sessions")
+                cur.execute("DELETE FROM players")
+                cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('final-fair-reset-v2')")
+            cur.execute("SELECT 1 FROM schema_migrations WHERE migration_key='fair-start-auth-v1'")
+            if not cur.fetchone():
+                cur.execute("DELETE FROM game_sessions")
+                cur.execute("DELETE FROM players")
+                cur.execute("INSERT INTO schema_migrations(migration_key) VALUES ('fair-start-auth-v1')")
+            cur.execute("""CREATE TABLE IF NOT EXISTS word_bank_meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1), version TEXT NOT NULL, imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+            cur.execute("SELECT version FROM word_bank_meta WHERE id=1")
+            row = cur.fetchone()
+            if not row or row[0] != WORD_BANK_VERSION:
+                path = Path(__file__).resolve().parent.parent / "data" / "common_words.txt"
+                try:
+                    candidates = path.read_text(encoding="utf-8").splitlines()
+                except OSError as exc:
+                    raise HTTPException(status_code=503, detail="The server word bank file is missing.") from exc
+                blocked_words = set("""ibm amd usc amp blvd trembl struct johnny nancy nutten travesti tft cfr scsi mhz ghz rpm hdtv xhtml phpbb zdnet lycos gamespot myspace netscape macromedia compaq packard hewlett mercedes chevrolet nissan yamaha verizon reuters espn cnn cbs nhl nba mlb ncaa ieee nasa fda ssl dns tcp rfc oem plc atm cgi seo jpg gif png html xml ftp http https url uri api sdk cpu gpu ram rom usb dvd cdrom vhs mpg mp3 mp4 jpeg wifi lan wan vpn isp bbc nyc hrs mins secs dept approx aka asap btw lol omg lmao tbh idk imo fyi inc ltd llc corp usa eu nato islamic muslim christians jews deutsch svenska norweg danish estonian latvian lithuanian slovak slovene czech polish greek latin russian chinese japanese korean hindi urdu bengali punjabi tamil telugu marathi swahili turkish persian portuguese spanish french german italian dutch welsh gaelic basque cyprus kenya cuba saudi nepal delhi rio peru chad malta samoa fiji laos mali oman qatar yemen ghana togo benin niger sudan libya congo rwanda zambia malawi angola serbia croatia romania bulgaria albania armenia georgia bristol glasgow montreal ottawa calgary manhattan brooklyn oakland memphis honolulu rochester arlington louisville newcastle queensland yorkshire madonna britney eminem justin jimmy carter marc albert warren barry marie kate karen margaret ralph mitchell wright collins parker kennedy cooper walter vincent francis dennis charlie graham brad todd doug dale monica ashley heather christina benjamin catherine julie janet helen lauren alice joel amy pete mrs phd mba cfo ceo cto cio vii viii ix xi xii sur por thru herein thereof unto thee thy thou wanna gotta gonna cant thats didnt doesnt isnt wasnt werent wouldnt couldnt shouldnt mustnt youre theyre weve youve ive im hes shes lets theres heres whos whats wheres whens whys hows dont wont shant aint ampersand peeing upskirts vibrators squirting titten dicks xanax tramadol levitra intel microsoft google yahoo ebay cisco oracle nokia acer asus dell nvidia qualcomm sony adobe amazon twitter facebook tiktok instagram youtube wikipedia wordpress drupal firefox chrome safari opera android iphone ipad xbox playstation nintendo wii atari dell hp ibm corp ltd llc inc gmbh plc fbi cia nsa mi5 mi6 unicef unesco who ngo ngos irs nasa usps fedex ups DHL ikea ikea ikea lego adidas puma reebok nike disney pixar netflix hulu hbo espn2 cnet pcmag zdnet gizmodo engadget arxiv doi isbn issn pdf docx xlsx pptx tiff eps svg json yaml toml sql nosql php perl ruby swift kotlin scala rust golang nodejs npm pip git svn svnkit tcpip udp ipsec httpd apache nginx linux ubuntu debian centos redhat fedora archlinux windows macos ios android unix dos bios firmware middleware freeware shareware malware spyware ransomware trojan botnet captcha oauth jwt smtp imap pop3 ftp sftp ssh telnet rdp vnc dnssec dhcp icmp ipv6 ipv4 localhost loopback stackoverflow github gitlab bitbucket jira slack discord zoom teams skype twitch reddit tumblr pinterest linkedin snapchat whatsapp telegram signal wechat weibo baidu alibaba tencent huawei xiaomi oppo vivo lenovo acer asus toshiba panasonic samsung lg sharp philips bosch siemens ge whirlpool maytag kenmore tesla toyota honda ford chevy buick kia hyundai mazda subaru mitsubishi suzuki volkswagen audi bmw mercedes benz porsche ferrari lamborghini bugatti maserati bentley rollsroyce astonmartin jaguar landrover volvo saab peugeot renault citroen fiat skoda seat opel vauxhall daewoo saturn pontiac oldsmobile hummer jeep dodge chrysler cadillac lincoln infiniti acura lexus genesis rivian lucid polestar spacex starlink boeing airbus lockheed raytheon northrop grumman siemens ge ibm amd usc trembl struct blvd amp nutten travesti tft cfr scsi mhz ghz rpm hdtv xhtml phpbb zdnet lycos gamespot myspace netscape macromedia compaq packard hewlett verizon reuters espn cnn cbs nhl nba mlb ncaa ieee fda ssl dns tcp rfc oem plc atm cgi seo jpg gif png html xml ftp http https url uri api sdk cpu gpu ram rom usb dvd cdrom vhs mpg mp3 mp4 jpeg wifi lan wan vpn isp bbc nyc hrs mins secs dept approx aka asap btw lol omg lmao tbh idk imo fyi cfo ceo cto cio vii viii ix xi xii upskirts vibrators squirting titten dicks xanax""".split())
+                valid = []
+                seen = set()
+                for item in candidates:
+                    word = item.strip().lower()
+                    if not re.fullmatch(r"[a-z]{4,20}", word) or word in seen or word in blocked_words:
+                        continue
+                    seen.add(word)
+                    difficulty = "easy" if len(word) <= 5 else "medium" if len(word) <= 8 else "hard"
+                    valid.append((word, difficulty))
+                if len(valid) < 5000:
+                    raise HTTPException(status_code=503, detail="The word bank must contain at least 5,000 valid words.")
+                cur.execute("DELETE FROM words")
+                execute_values(cur, "INSERT INTO words(word,difficulty) VALUES %s", valid, page_size=1000)
+                cur.execute("""INSERT INTO word_bank_meta(id,version) VALUES (1,%s)
+                    ON CONFLICT(id) DO UPDATE SET version=EXCLUDED.version, imported_at=NOW()""", (WORD_BANK_VERSION,))
+        conn.commit()
+        _DB_INITIALIZED = True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        if owns_connection:
+            conn.close()
 
-def mask(word, guesses):
-    guessed = set(guesses.split(",")) if guesses else set()
+
+def mask_word(word, guessed):
     return " ".join(ch if ch in guessed else "_" for ch in word)
 
-class Guess(BaseModel):
-    session_id: int
-    letter: str
-class SaveScore(BaseModel):
-    session_id: int
-    player_name: str
 
+class GuessRequest(BaseModel):
+    session_id: int
+    letter: str = Field(min_length=1, max_length=8)
+
+class AuthRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    password: str = Field(min_length=8, max_length=128)
+
+
+def normalize_player_name(name):
+    cleaned = re.sub(r"\s+", " ", name).strip()
+    if not cleaned or len(cleaned) > 40 or not re.search(r"[A-Za-z0-9]", cleaned):
+        raise HTTPException(status_code=400, detail="Enter a name using 1–40 characters.")
+    return cleaned, cleaned.casefold()
+
+
+def validate_password(password):
+    if len(password) < 8 or not re.search(r"[A-Z]", password) or not re.search(r"[0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters and include one uppercase letter and one number.")
+
+
+def make_password_hash(password):
+    salt = secrets.token_bytes(16)
+    rounds = 310000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
+    return "pbkdf2_sha256$" + str(rounds) + "$" + salt.hex() + "$" + digest.hex()
+
+
+def check_password(password, encoded):
+    try:
+        scheme, rounds, salt_hex, digest_hex = encoded.split("$")
+        if scheme != "pbkdf2_sha256":
+            return False
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(rounds))
+        return hmac.compare_digest(actual.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
+
+
+def bearer_token(authorization):
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    return token.strip() if scheme.lower() == "bearer" and token.strip() else None
+
+
+def resolve_auth_player(cur, authorization):
+    token = bearer_token(authorization)
+    if not token:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    cur.execute("""SELECT p.id,p.name,p.account_type FROM player_auth_sessions s
+        JOIN players p ON p.id=s.player_id
+        WHERE s.token_hash=%s AND s.expires_at>NOW()""", (token_hash,))
+    return cur.fetchone()
+
+
+def enforce_session_owner(cur, player_id, authorization):
+    if player_id is None:
+        return
+    cur.execute("SELECT account_type FROM players WHERE id=%s", (player_id,))
+    row = cur.fetchone()
+    if row and row[0] == "protected":
+        auth_player = resolve_auth_player(cur, authorization)
+        if not auth_player or auth_player[0] != player_id:
+            raise HTTPException(status_code=401, detail="Sign in to the protected account that started this round.")
+
+
+
+@app.get("/health")
+@app.get("/api/health")
+def health():
+    conn = get_connection()
+    try:
+        init_db(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM words")
+            word_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM players")
+            player_count = cur.fetchone()[0]
+        return {"ok": True, "database": "connected", "words": word_count, "players": player_count}
+    finally:
+        conn.close()
+
+
+@app.post("/api/auth/register")
+def register_account(payload: AuthRequest):
+    name, normalized = normalize_player_name(payload.name)
+    validate_password(payload.password)
+    conn = get_connection()
+    try:
+        init_db(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT id,account_type FROM players WHERE normalized_name=%s FOR UPDATE", (normalized,))
+            existing = cur.fetchone()
+            if existing:
+                if existing[1] == "public":
+                    raise HTTPException(status_code=409, detail="That name is already in use as a Public name. Choose another name.")
+                raise HTTPException(status_code=409, detail="That protected name already exists. Sign in instead.")
+            cur.execute("""INSERT INTO players(name,normalized_name,account_type,password_hash)
+                VALUES (%s,%s,'protected',%s) RETURNING id""", (name, normalized, make_password_hash(payload.password)))
+            player_id = cur.fetchone()[0]
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            cur.execute("INSERT INTO player_auth_sessions(player_id,token_hash,expires_at) VALUES (%s,%s,NOW()+INTERVAL '30 days')", (player_id, token_hash))
+        conn.commit()
+        return {"auth_token": token, "player_name": name, "verified": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/auth/login")
+def login_account(payload: AuthRequest):
+    name, normalized = normalize_player_name(payload.name)
+    conn = get_connection()
+    try:
+        init_db(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT id,name,account_type,password_hash FROM players WHERE normalized_name=%s", (normalized,))
+            row = cur.fetchone()
+            if not row or row[2] != "protected" or not row[3] or not check_password(payload.password, row[3]):
+                raise HTTPException(status_code=401, detail="Name or password is incorrect.")
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            cur.execute("INSERT INTO player_auth_sessions(player_id,token_hash,expires_at) VALUES (%s,%s,NOW()+INTERVAL '30 days')", (row[0], token_hash))
+        conn.commit()
+        return {"auth_token": token, "player_name": row[1], "verified": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.post("/api/auth/logout")
+def logout_account(authorization: str | None = Header(default=None, alias="Authorization")):
+    token = bearer_token(authorization)
+    if token:
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM player_auth_sessions WHERE token_hash=%s", (hashlib.sha256(token.encode("utf-8")).hexdigest(),))
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": True}
+
+
+@app.get("/new-game")
 @app.get("/api/new-game")
-def new_game(difficulty: str = "easy"):
+def new_game(difficulty: str = "easy", player_name: str = "", authorization: str | None = Header(default=None, alias="Authorization")):
     difficulty = difficulty.lower()
-    if difficulty not in BONUS:
-        raise HTTPException(400, "Choose easy, medium or hard")
-    with connect() as conn:
+    if difficulty not in DIFFICULTIES:
+        raise HTTPException(status_code=400, detail="Choose easy, medium, or hard.")
+    player_name, normalized = normalize_player_name(player_name)
+    conn = get_connection()
+    try:
+        init_db(conn)
         with conn.cursor() as cur:
-            cur.execute("SELECT word FROM words WHERE difficulty=%s ORDER BY RANDOM() LIMIT 1", (difficulty,))
+            auth_player = resolve_auth_player(cur, authorization)
+            cur.execute("SELECT id,account_type FROM players WHERE normalized_name=%s FOR UPDATE", (normalized,))
+            existing = cur.fetchone()
+            if existing and existing[1] == "protected":
+                if not auth_player or auth_player[0] != existing[0]:
+                    raise HTTPException(status_code=401, detail="This name is protected. Sign in to its account before playing.")
+                player_id = existing[0]
+            elif existing:
+                if auth_player:
+                    raise HTTPException(status_code=403, detail="A protected account cannot play under a Public name.")
+                player_id = existing[0]
+            else:
+                if auth_player:
+                    raise HTTPException(status_code=403, detail="Use the name attached to your signed-in account.")
+                cur.execute("INSERT INTO players(name,normalized_name,account_type) VALUES (%s,%s,'public') RETURNING id", (player_name, normalized))
+                player_id = cur.fetchone()[0]
+            bounds = {"easy": (4, 5), "medium": (6, 8), "hard": (9, 20)}
+            low, high = bounds[difficulty]
+            cur.execute("""SELECT word FROM words
+                WHERE difficulty=%s AND length(word) BETWEEN %s AND %s
+                ORDER BY RANDOM() LIMIT 1""", (difficulty, low, high))
             row = cur.fetchone()
             if not row:
-                raise HTTPException(404, "No words available for this difficulty")
-            word = row[0].strip().lower()
-            cur.execute("INSERT INTO game_sessions(word,difficulty) VALUES(%s,%s) RETURNING id", (word,difficulty))
-            sid = cur.fetchone()[0]
-    return {"session_id":sid,"masked_word":mask(word,""),"wrong_count":0,"max_attempts":MAX_ATTEMPTS,"status":"playing"}
+                raise HTTPException(status_code=503, detail=f"No playable words are available for {difficulty}.")
+            word = row[0]
+            cur.execute("INSERT INTO game_sessions(word,difficulty,player_name,player_id,score,score_committed) VALUES (%s,%s,%s,%s,%s,FALSE) RETURNING id", (word, difficulty, player_name, player_id, ROUND_REWARD[difficulty]))
+            session_id = cur.fetchone()[0]
+            cur.execute("SELECT total_score,current_streak,highest_streak FROM players WHERE id=%s", (player_id,))
+            total_score, current_streak, highest_streak = cur.fetchone()
+        conn.commit()
+        return {
+            "session_id": session_id,
+            "masked_word": mask_word(word, set()),
+            "wrong_count": 0,
+            "max_attempts": MAX_ATTEMPTS,
+            "status": "playing",
+            "hint": "Loading your word-specific dictionary hint…",
+            "difficulty_rule": DIFFICULTY_RULE[difficulty],
+            "player_name": player_name,
+            "score": ROUND_REWARD[difficulty],
+            "round_reward": ROUND_REWARD[difficulty],
+            "total_score": total_score,
+            "current_streak": current_streak,
+            "highest_streak": highest_streak,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
+
+@app.post("/guess")
 @app.post("/api/guess")
-def guess(payload: Guess):
+def guess(payload: GuessRequest, authorization: str | None = Header(default=None, alias="Authorization")):
     letter = payload.letter.strip().lower()
-    if len(letter) != 1 or not letter.isascii() or not letter.isalpha():
-        raise HTTPException(400, "Enter one letter A-Z")
-    with connect() as conn:
+    if len(letter) != 1 or letter not in "abcdefghijklmnopqrstuvwxyz":
+        raise HTTPException(status_code=400, detail="Enter one letter from A to Z.")
+    conn = get_connection()
+    try:
         with conn.cursor() as cur:
-            cur.execute("SELECT word,guessed_letters,wrong_count,status FROM game_sessions WHERE id=%s", (payload.session_id,))
+            cur.execute("""SELECT word,guessed_letters,wrong_count,status,difficulty,player_id,
+                COALESCE(score,0),player_name,score_committed
+                FROM game_sessions WHERE id=%s FOR UPDATE""", (payload.session_id,))
             row = cur.fetchone()
             if not row:
-                raise HTTPException(404, "Game session not found")
-            word, old, wrong, status = row
-            guessed = set(old.split(",")) if old else set()
-            if status != "playing" or letter in guessed:
-                return {"masked_word": word if status == "lost" else mask(word, old), "wrong_count":wrong,"status":status}
-            guessed.add(letter)
-            if letter not in word:
-                wrong += 1
-            status = "won" if all(ch in guessed for ch in set(word)) else ("lost" if wrong >= MAX_ATTEMPTS else "playing")
-            packed = ",".join(sorted(guessed))
-            cur.execute("UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s WHERE id=%s", (packed,wrong,status,payload.session_id))
-    return {"masked_word":word if status=="lost" else mask(word,packed),"wrong_count":wrong,"status":status}
+                raise HTTPException(status_code=404, detail="Game session not found. Start a new round.")
+            word, stored, wrong, status, difficulty, player_id, score, player_name, score_committed = row
+            enforce_session_owner(cur, player_id, authorization)
+            guessed = set(stored.split(",")) if stored else set()
+            total_score = current_streak = highest_streak = 0
+            if status == "playing" and letter not in guessed:
+                guessed.add(letter)
+                if letter not in word:
+                    wrong += 1
+                    score = max(0, score - WRONG_PENALTY[difficulty])
+                status = "won" if all(ch in guessed for ch in set(word)) else ("lost" if wrong >= MAX_ATTEMPTS else "playing")
+                if status == "lost":
+                    score = 0
+                cur.execute("""UPDATE game_sessions SET guessed_letters=%s,wrong_count=%s,status=%s,score=%s
+                    WHERE id=%s""", (",".join(sorted(guessed)), wrong, status, score, payload.session_id))
+                if status == "won" and not score_committed and player_id is not None:
+                    cur.execute("""UPDATE players SET total_score=total_score+%s,
+                        current_streak=current_streak+1,
+                        highest_streak=GREATEST(highest_streak,current_streak+1)
+                        WHERE id=%s RETURNING total_score,current_streak,highest_streak""", (score, player_id))
+                    total_score, current_streak, highest_streak = cur.fetchone()
+                    cur.execute("UPDATE game_sessions SET score_committed=TRUE WHERE id=%s", (payload.session_id,))
+                elif status == "lost" and player_id is not None:
+                    cur.execute("UPDATE players SET current_streak=0 WHERE id=%s RETURNING total_score,current_streak,highest_streak", (player_id,))
+                    total_score, current_streak, highest_streak = cur.fetchone()
+                elif player_id is not None:
+                    cur.execute("SELECT total_score,current_streak,highest_streak FROM players WHERE id=%s", (player_id,))
+                    total_score, current_streak, highest_streak = cur.fetchone()
+            elif player_id is not None:
+                cur.execute("SELECT total_score,current_streak,highest_streak FROM players WHERE id=%s", (player_id,))
+                total_score, current_streak, highest_streak = cur.fetchone()
+            conn.commit()
+            return {
+                "masked_word": word if status == "lost" else mask_word(word, guessed),
+                "wrong_count": wrong, "status": status, "score": score,
+                "total_score": total_score, "current_streak": current_streak,
+                "highest_streak": highest_streak, "player_name": player_name,
+                "correct_guess": letter in word, "meaning_word": word if status in ("won", "lost") else None
+            }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
-@app.post("/api/save-score")
-def save_score(payload: SaveScore):
-    name = payload.player_name.strip()
-    if not name or len(name) > 40:
-        raise HTTPException(400, "Nickname must be 1-40 characters")
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT difficulty,wrong_count,status FROM game_sessions WHERE id=%s", (payload.session_id,))
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Game session not found")
-            difficulty, wrong, status = row
-            if status != "won":
-                raise HTTPException(400, "A score can only be saved after a win")
-            score = (MAX_ATTEMPTS - wrong) * 10 + BONUS[difficulty]
-            cur.execute("UPDATE game_sessions SET player_name=%s,score=%s WHERE id=%s", (name,score,payload.session_id))
-    return {"score":score,"player_name":name}
 
+@app.get("/leaderboard")
 @app.get("/api/leaderboard")
 def leaderboard():
-    with connect() as conn:
+    conn = get_connection()
+    try:
+        init_db(conn)
         with conn.cursor() as cur:
-            cur.execute("""SELECT player_name,score,difficulty FROM game_sessions
-                WHERE status='won' AND score IS NOT NULL ORDER BY score DESC,id ASC LIMIT 50""")
+            cur.execute("""SELECT p.name,p.total_score,p.highest_streak,p.current_streak,
+                    COALESCE(latest.difficulty,'easy'),p.account_type
+                FROM players p
+                LEFT JOIN LATERAL (
+                    SELECT gs.difficulty FROM game_sessions gs
+                    WHERE gs.player_id=p.id ORDER BY gs.id DESC LIMIT 1
+                ) latest ON TRUE
+                WHERE p.total_score > 0 OR p.highest_streak > 0
+                ORDER BY p.total_score DESC,p.highest_streak DESC,p.name ASC LIMIT 100""")
             rows = cur.fetchall()
-    return [{"player_name":r[0],"score":r[1],"difficulty":r[2]} for r in rows]
+        return [{"player_name": r[0], "score": r[1], "highest_streak": r[2],
+                 "current_streak": r[3], "difficulty": r[4], "verified": r[5] == "protected", "section": "verified" if r[5] == "protected" else "public"} for r in rows]
+    finally:
+        conn.close()
+
+
+@app.post("/end-game/{session_id}")
+@app.post("/api/end-game/{session_id}")
+def end_game(session_id: int, authorization: str | None = Header(default=None, alias="Authorization")):
+    """Abandon an in-progress round without treating it as a loss."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT player_id FROM game_sessions WHERE id=%s FOR UPDATE", (session_id,))
+            owner = cur.fetchone()
+            if not owner:
+                raise HTTPException(status_code=404, detail="Game session not found.")
+            enforce_session_owner(cur, owner[0], authorization)
+            cur.execute("""UPDATE game_sessions SET status='abandoned'
+                WHERE id=%s AND status='playing' RETURNING id""", (session_id,))
+            row = cur.fetchone()
+            if not row:
+                cur.execute("SELECT status FROM game_sessions WHERE id=%s", (session_id,))
+                existing = cur.fetchone()
+                if not existing:
+                    raise HTTPException(status_code=404, detail="Game session not found.")
+                conn.commit()
+                return {"status": existing[0], "message": "This round is already finished."}
+        conn.commit()
+        return {"status": "abandoned", "message": "Round ended. Your lifetime score and streak were kept."}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@app.get("/hint/{session_id}")
+@app.get("/api/hint/{session_id}")
+def word_hint(session_id: int, authorization: str | None = Header(default=None, alias="Authorization")):
+    """Return a useful difficulty-adjusted clue, trying two dictionary providers before offline clues."""
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT word,difficulty,player_id FROM game_sessions WHERE id=%s", (session_id,))
+            row = cur.fetchone()
+            if row:
+                enforce_session_owner(cur, row[2], authorization)
+            if not row:
+                raise HTTPException(status_code=404, detail="Game session not found.")
+            word, difficulty = row[0], row[1]
+    finally:
+        conn.close()
+
+    cache_key = (word.lower(), difficulty)
+    if cache_key in _HINT_CACHE:
+        return dict(_HINT_CACHE[cache_key])
+
+    # Reviewed offline clues protect common words if both external services are unavailable.
+    local_hints = {
+        "ciao": ("An informal Italian greeting used to say hello or goodbye.", "You might say this when arriving at or leaving a friend's place.", "interjection"),
+        "code": ("Instructions written for a computer to follow.", "A programmer may write this to make an app work.", "noun"),
+        "website": ("A collection of pages you can visit on the internet.", "You might open one to read news or shop online.", "noun"),
+        "compiler": ("A program that translates source code into another form a computer can use.", "Developers use this tool when building software.", "noun"),
+        "apple": ("A crisp fruit that can be red, green, or yellow.", "You might pack one as a snack.", "noun"),
+        "water": ("A clear liquid essential for life.", "People drink it to stay hydrated.", "noun"),
+        "house": ("A building where people live.", "It may have rooms, a kitchen, and a roof.", "noun"),
+        "music": ("Sounds arranged to create rhythm, melody, or harmony.", "People listen to it for fun or relaxation.", "noun"),
+        "book": ("A set of written or printed pages bound together.", "You might borrow one from a library.", "noun"),
+        "computer": ("An electronic machine that processes information.", "You might use one to study, work, or play games.", "noun"),
+        "keyboard": ("A set of keys used to enter letters or commands.", "You use one to type on a computer.", "noun"),
+        "internet": ("A worldwide network connecting computers and devices.", "You use it to visit websites and send messages.", "noun"),
+        "garden": ("An area where flowers, vegetables, or other plants are grown.", "Someone might grow tomatoes or roses here.", "noun"),
+        "library": ("A place or collection where books and other resources are available.", "Students often go here to read or study.", "noun"),
+        "science": ("The systematic study of the natural and physical world.", "It includes subjects such as biology and chemistry.", "noun"),
+        "network": ("A group of connected people, computers, or things.", "Devices use one to communicate with each other.", "noun"),
+    }
+    local = local_hints.get(word.lower())
+    definitions, examples, parts_of_speech = [], [], []
+    failures = []
+    provider = None
+
+    def clean_text(value, limit):
+        value = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not value or len(value) > limit or re.search(r"\b" + re.escape(word) + r"\b", value, re.IGNORECASE):
+            return ""
+        return value
+
+    def add_definition(value):
+        value = clean_text(value, 240)
+        if value and value not in definitions:
+            definitions.append(value)
+
+    def add_example(value):
+        value = clean_text(value, 220)
+        if value and value not in examples:
+            examples.append(value)
+
+    # Provider 1: Free Dictionary API (dictionaryapi.dev).
+    primary_url = "https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(word)
+    try:
+        req = urllib.request.Request(primary_url, headers={"User-Agent": "WordHunt-EF101/1.0"})
+        with urllib.request.urlopen(req, timeout=2.5) as response:
+            data = json.loads(response.read(400_000).decode("utf-8"))
+        for entry in data if isinstance(data, list) else []:
+            for meaning in entry.get("meanings", []):
+                pos = re.sub(r"[^a-z -]", "", str(meaning.get("partOfSpeech", "")).lower()).strip()
+                if pos and pos not in parts_of_speech:
+                    parts_of_speech.append(pos)
+                for item in meaning.get("definitions", []):
+                    add_definition(item.get("definition", ""))
+                    add_example(item.get("example", ""))
+        if definitions:
+            provider = "dictionaryapi.dev"
+        if not definitions and not parts_of_speech:
+            failures.append("primary_no_usable_entry")
+    except urllib.error.HTTPError as exc:
+        failures.append("primary_http_" + str(exc.code))
+    except (OSError, ValueError, TimeoutError) as exc:
+        failures.append("primary_" + type(exc).__name__.lower())
+
+    # Provider 2: FreeDictionaryAPI.com, backed by Wiktionary, is queried when provider 1 has no definition.
+    if not definitions:
+        secondary_url = "https://freedictionaryapi.com/api/v1/entries/en/" + urllib.parse.quote(word)
+        try:
+            req = urllib.request.Request(secondary_url, headers={"User-Agent": "WordHunt-EF101/1.0"})
+            with urllib.request.urlopen(req, timeout=2.5) as response:
+                data = json.loads(response.read(500_000).decode("utf-8"))
+            entries = data.get("entries", []) if isinstance(data, dict) else []
+            for entry in entries:
+                pos = re.sub(r"[^a-z -]", "", str(entry.get("partOfSpeech", "")).lower()).strip()
+                if pos and pos not in parts_of_speech:
+                    parts_of_speech.append(pos)
+                for sense in entry.get("senses", []):
+                    add_definition(sense.get("definition", ""))
+                    for example in sense.get("examples", []) if isinstance(sense.get("examples", []), list) else []:
+                        add_example(example)
+                    for sub in sense.get("subsenses", []) if isinstance(sense.get("subsenses", []), list) else []:
+                        add_definition(sub.get("definition", ""))
+                        for example in sub.get("examples", []) if isinstance(sub.get("examples", []), list) else []:
+                            add_example(example)
+            if definitions:
+                provider = "freedictionaryapi.com / Wiktionary"
+            else:
+                failures.append("secondary_no_usable_entry")
+        except urllib.error.HTTPError as exc:
+            failures.append("secondary_http_" + str(exc.code))
+        except (OSError, ValueError, TimeoutError) as exc:
+            failures.append("secondary_" + type(exc).__name__.lower())
+
+    if failures:
+        import logging
+        logging.warning("Dictionary lookup for session %s word %r: %s", session_id, word, ",".join(failures))
+
+    local_definition, local_example, local_pos = local if local else (None, None, None)
+    definition = definitions[0] if definitions else local_definition
+    example = examples[0] if examples else local_example
+    pos = parts_of_speech[0] if parts_of_speech else local_pos
+
+    # Never invent a definition from the word's length or first letter.
+    if definition:
+        meaning = definition
+        if difficulty == "hard":
+            hint = (pos or "Word").capitalize()
+        elif difficulty == "medium":
+            hint = definition
+        else:
+            hint = definition + (" Example: " + example if example else "")
+        source = provider or "offline"
+    else:
+        meaning = "A reliable definition could not be loaded for this word right now."
+        hint = "No reliable clue is available right now. Please end this round and start another."
+        source = "unavailable"
+    result = {
+        "hint": hint,
+        "meaning": meaning,
+        "part_of_speech": pos,
+        "hint_source": source,
+        "hint_attribution": "FreeDictionaryAPI.com (Wiktionary) may be used as a backup definition source."
+    }
+    # Cache by word and difficulty so the modal and hint panel do not repeat provider requests.
+    if source != "unavailable":
+        _HINT_CACHE[cache_key] = result
+    return dict(result)

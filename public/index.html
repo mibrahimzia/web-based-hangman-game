@@ -1,21 +1,75 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Word Hunt — EF-101 Hangman</title>
-<link rel="stylesheet" href="/style.css"><script src="/script.js" defer></script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f6f4ee">
+<title>Word Hunt · EF101-P01</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="stylesheet" href="/style.css"><script defer src="/script.js"></script>
 </head>
 <body>
-<header class="site-header"><a class="brand" href="#top"><span class="brand-icon">W</span><span><strong>WORD HUNT</strong><small>EF-101 · PROJECT 01</small></span></a><nav><a href="#game">Play</a><a href="#leaderboard">Leaderboard</a><a href="#rules">Rules</a></nav></header>
-<main id="top" class="page-shell">
-<section class="intro"><div><p class="eyebrow">A SMALL WORD CHALLENGE</p><h1>Can you find<br><span>the hidden word?</span></h1><p class="intro-copy">Choose a level. Guess one letter at a time. Save your score when you win.</p></div><div class="letter-art" aria-hidden="true"><span class="tile tile-a">W</span><span class="tile tile-b">?</span><span class="tile tile-c">D</span><span class="art-star">✦</span></div></section>
-<div class="layout-grid">
-<section id="game" class="card game-card"><div class="card-heading"><div><p class="eyebrow">YOUR ROUND</p><h2 id="game-title">Ready to play?</h2></div><span id="round-status" class="status-pill">NOT STARTED</span></div>
-<div class="game-options"><label for="difficulty">Difficulty<select id="difficulty"><option value="easy">Easy · 3–5 letters</option><option value="medium">Medium · 6–8 letters</option><option value="hard">Hard · 9+ letters</option></select></label><button id="new-game-button" class="button button-primary" type="button">Start game</button></div>
-<div class="word-card"><div class="word-card-heading"><span>YOUR WORD</span><span id="round-difficulty" class="difficulty-pill">EASY</span></div><div class="word-area"><svg id="hangman-drawing" class="hangman" viewBox="0 0 150 150" role="img" aria-label="Hangman drawing"><path class="gallows" d="M19 132H121M39 132V18H102V34"/><circle class="person-part" data-part="1" cx="102" cy="47" r="13"/><path class="person-part" data-part="2" d="M102 60V91"/><path class="person-part" data-part="3" d="M102 68L83 82"/><path class="person-part" data-part="4" d="M102 68L121 82"/><path class="person-part" data-part="5" d="M102 91L85 113"/><path class="person-part" data-part="6" d="M102 91L119 113"/></svg><div class="word-info"><div id="masked-word" class="masked-word">— — —</div><p id="game-message" class="game-message" aria-live="polite">Choose a difficulty and start a game.</p><div class="attempts-row"><span>CHANCES LEFT</span><strong><span id="attempts-left">6</span><small> / 6</small></strong></div><div id="attempts-meter" class="attempts-meter" role="img" aria-label="6 of 6 chances remaining"><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div><div class="word-card-footer"><div><span class="small-label">INCORRECT</span><strong id="wrong-count">0</strong></div><div class="guessed-area"><span class="small-label">LETTERS TRIED</span><div id="guessed-letters" class="guessed-letters"><span class="muted">None yet</span></div></div></div></div>
-<div class="keyboard-heading"><div><p class="eyebrow">MAKE YOUR MOVE</p><h3>Choose a letter</h3></div><span>OR USE YOUR KEYBOARD</span></div><div id="keyboard" class="keyboard" aria-label="Choose a letter from A to Z"></div><p class="helper-text">A correct guess reveals every matching letter. Repeating a guess does not cost a chance.</p>
-<form id="score-form" class="score-form" hidden><div><p class="eyebrow">YOU SOLVED IT</p><h3>Save your score</h3><p>Enter a nickname to add your win to the leaderboard.</p></div><label for="player-name">Nickname</label><div class="score-input-row"><input id="player-name" name="player_name" maxlength="40" autocomplete="nickname" placeholder="e.g. WordWhiz" required><button id="save-score-button" class="button button-primary" type="submit">Save score</button></div><p id="score-form-message" class="form-message" role="status"></p></form>
-<div id="win-result" class="result result-win" hidden><div><strong id="win-result-title">Score saved!</strong><p id="win-result-detail"></p></div><button id="play-again-win" class="button button-secondary" type="button">Play again</button></div><div id="loss-result" class="result result-loss" hidden><div><strong>You lost this round</strong><p id="loss-result-detail">The answer is shown above.</p></div><button id="play-again-loss" class="button button-secondary" type="button">Try again</button></div><p id="api-message" class="api-message" role="status" hidden></p></section>
-<aside id="leaderboard" class="card leaderboard-card"><div class="leaderboard-heading"><div><p class="eyebrow">THE HIGH SCORES</p><h2 id="leaderboard-title">Leaderboard</h2></div><span class="trophy">★</span></div><p class="leaderboard-copy">Top 50 scores, saved in the database.</p><div class="leaderboard-tools"><span><strong id="leaderboard-count">0</strong> scores</span><button id="refresh-leaderboard" class="text-button" type="button">Refresh ↻</button></div><p id="leaderboard-status" class="leaderboard-status" role="status">Loading scores…</p><ol id="leaderboard-list" class="leaderboard-list"></ol><p class="leaderboard-note">The top three players have special badges. Your score stays here after you close the browser.</p></aside></div>
-<section id="rules" class="rules-strip"><div><span class="rule-number">01</span><p><strong>Choose a level</strong><br>Easy: 3–5 letters · Medium: 6–8 · Hard: 9+</p></div><div><span class="rule-number">02</span><p><strong>Guess carefully</strong><br>You have six incorrect guesses.</p></div><div><span class="rule-number">03</span><p><strong>Win and score</strong><br>Remaining chances × 10, plus a difficulty bonus.</p></div></section><footer class="site-footer"><span>WORD HUNT · EF101-P01</span><span>Built to understand how a web system works.</span></footer>
-</main></body></html>
+<header class="topbar">
+<a class="brand" href="/" aria-label="Word Hunt home"><span>WORD HUNT <small>EF101-P01</small></span></a>
+<div class="top-actions"><button id="theme-toggle" class="quiet-button" type="button" aria-label="Toggle light and dark mode"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg><span>Dark mode</span></button><button id="style-toggle" class="quiet-button" type="button" aria-label="Switch visual style"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg><span>Typewriter theme</span></button><button id="account-open" class="quiet-button" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0m-3-9h6m-3-3v6"/></svg><span>Create protected account</span></button><button id="signin-open" class="quiet-button" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5m5 5H3m10-9h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg><span>Sign in</span></button><button id="leader-toggle" class="quiet-button menu-toggle" type="button" aria-expanded="true" aria-controls="leader-panel"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V5m0 14h17M8 15l4-4 3 2 5-7"/></svg><span>Leaderboard</span></button></div>
+</header>
+<main>
+<section class="intro"><p class="eyebrow">ROUND 01 / WORD GAME</p><h1>One word.<br><span>Six chances.</span></h1><p class="intro-copy">A little curiosity goes a long way.</p></section>
+<div class="game-layout" id="game-layout">
+<section class="panel drawing-panel" aria-label="Hangman drawing">
+<div class="panel-top"><div><p class="eyebrow">THE GALLOWS</p><h2>Wrong guesses</h2></div><span class="counter"><b id="wrong">0</b> / 6</span></div>
+<svg id="hangman" class="hangman" viewBox="0 0 260 300" role="img" aria-label="Hangman drawing. The gallows is fixed in place.">
+<path class="gallows" d="M24 276 H194"/>
+<path class="stand-part person-part drawn" data-part="stand" d="M58 24 H194"/>
+<path class="stand-part person-part drawn" data-part="stand" d="M58 276 V24"/>
+<path class="stand-part person-part drawn" data-part="stand" d="M58 78 L112 24"/>
+<path class="stand-part person-part drawn rope-part" data-part="stand" d="M170 24 V50"/>
+<circle class="person-part" data-part="1" cx="170" cy="72" r="22"/>
+<path class="person-part" data-part="2" d="M170 94 V160"/>
+<path class="person-part" data-part="3" d="M170 112 L140 140"/>
+<path class="person-part" data-part="4" d="M170 112 L200 140"/>
+<path class="person-part" data-part="5" d="M170 160 L142 207"/>
+<path class="person-part" data-part="6" d="M170 160 L198 207"/>
+</svg>
+
+</section>
+<section id="game" class="panel play-panel">
+<div class="panel-top"><div><p class="eyebrow">YOUR ROUND</p><h2 id="title">Ready when you are.</h2></div><span id="status" class="pill">NOT STARTED</span></div>
+<div class="controls"><label for="name">Player name<input id="name" maxlength="40" required placeholder="Enter your name" autocomplete="nickname"></label><label for="difficulty">Difficulty<select id="difficulty"><option value="easy">Easy · 4–5 letters</option><option value="medium">Medium · 6–8 letters</option><option value="hard">Hard · 9+ letters</option></select></label><button id="new-game" class="primary-button" type="button">Start a game <span aria-hidden="true">→</span></button><button id="end-game" class="quiet-button" type="button" hidden>End game</button></div>
+
+<div class="word-area"><div class="word-meta"><span>HIDDEN WORD</span><span><b id="left">6</b> chances left · ROUND <b id="current-score">100 pts</b> · LIFETIME <b id="lifetime-score">0 pts</b></span></div><div id="word" class="word" aria-label="Hidden word">_ _ _ _ _</div><div class="hint-box"><span class="hint-label">HINT</span><p id="hint">Start a game to reveal your hint.</p></div></div>
+<div class="keyboard-heading"><h3>Choose a letter</h3><span>Keyboard works too</span></div><div id="keyboard" class="keyboard" aria-label="Letter buttons"></div>
+<p class="tried-line">Letters tried <span id="guessed">None yet</span></p>
+<p id="score-message" class="score-message" aria-live="polite"></p>
+<div id="result" class="result" aria-live="polite"></div>
+</section>
+<aside id="leader-panel" class="panel leaderboard-panel" aria-label="Leaderboard">
+<div class="panel-top"><div><p class="eyebrow">PERSONAL BESTS</p><h2>Leaderboard</h2></div><button id="leader-close" class="icon-button" type="button" aria-label="Close leaderboard">×</button></div>
+<p class="muted">Lifetime points and overall streak across all difficulties.</p><button id="refresh" class="refresh-button" type="button">Refresh scores ↻</button><p id="board-status" class="board-status" aria-live="polite">Loading scores…</p><section class="board-group"><h3>Public</h3><ol id="public-scores" class="scores"></ol></section><section class="board-group"><h3>Verified</h3><ol id="verified-scores" class="scores"></ol></section><p class="board-foot">Press Tab to move through the game. Use the menu to reopen this panel.</p>
+</aside>
+</div>
+<section class="rules"><div><span>01</span><b>Pick a level</b><p>Each level changes the word length and hint.</p></div><div><span>02</span><b>Use your chances</b><p>Six incorrect guesses. Repeated letters are free.</p></div><div><span>03</span><b>Earn your score</b><p>Win words to add points. Wrong guesses reduce only this round’s reward.</p></div></section>
+<footer>WORD HUNT <span>·</span> EF101-P01 <span>·</span> Backup definitions: <a href="https://freedictionaryapi.com/" target="_blank" rel="noopener noreferrer">FreeDictionaryAPI.com</a> / <a href="https://en.wiktionary.org/" target="_blank" rel="noopener noreferrer">Wiktionary</a></footer>
+</main>
+<div id="round-modal" class="round-modal" hidden role="dialog" aria-modal="true" aria-labelledby="round-modal-title">
+  <section class="round-card">
+    <div id="modal-celebration" class="modal-celebration" aria-hidden="true">WORD HUNT</div>
+    <p id="modal-eyebrow" class="eyebrow">ROUND COMPLETE</p>
+    <h2 id="round-modal-title">Word found!</h2>
+    <p id="modal-word" class="modal-word">WORD</p>
+    <div class="meaning-panel"><span>WORD MEANING</span><p id="modal-meaning">Loading meaning…</p></div>
+    <p id="modal-score" class="modal-score"></p>
+    <p id="modal-streak" class="modal-streak"></p>
+    <button id="modal-action" class="primary-button modal-action" type="button">Continue →</button>
+  </section>
+</div>
+<div id="account-modal" class="account-modal" hidden role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+  <section class="account-card">
+    <button id="account-close" class="icon-button account-close" type="button" aria-label="Close account dialog">×</button>
+    <p class="eyebrow">PLAYER IDENTITY</p><h2 id="account-modal-title">Choose how to play</h2>
+    <div class="account-tabs"><button type="button" class="account-tab active" data-mode="public">Public</button><button type="button" class="account-tab" data-mode="register">Create protected</button><button type="button" class="account-tab" data-mode="login">Sign in</button></div>
+    <label for="account-name">Player name<input id="account-name" maxlength="40" autocomplete="username" placeholder="Enter player name"></label>
+    <label id="account-password-label" for="account-password">Password<input id="account-password" type="password" minlength="8" autocomplete="current-password" placeholder="8+ characters, one capital and one number"></label>
+    <p id="account-help" class="account-help">Public names are shared. Protected names require the matching account password.</p>
+    <button id="account-submit" class="primary-button" type="button">Play publicly</button>
+    <button id="sign-out" class="quiet-button" type="button" hidden>Sign out</button>
+  </section>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body></html>
