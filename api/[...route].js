@@ -44,6 +44,7 @@ async function ensureDatabase() {
       await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS definition TEXT");
       await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS example TEXT");
       await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS part_of_speech TEXT");
+      await client.query("CREATE UNIQUE INDEX IF NOT EXISTS words_word_difficulty_uidx ON words(word,difficulty)");
       await client.query("CREATE INDEX IF NOT EXISTS words_difficulty_length_idx ON words(difficulty,length(word))");
       const meta = await client.query("SELECT version FROM word_bank_meta WHERE id=1");
       if (!meta.rows[0] || meta.rows[0].version !== WORD_BANK_VERSION) {
