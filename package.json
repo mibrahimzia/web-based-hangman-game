@@ -6,7 +6,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node --check 'api/[...route].js'"
+    "check": "node --check 'api/[...route].js' && node --check api/dictionary.js && node --check public/script.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
