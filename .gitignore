@@ -11,3 +11,7 @@ venv/
 ENV/ 
 env.bak/ 
 venv.bak/ 
+
+# Node.js dependencies and build output
+node_modules/
+.vercel/

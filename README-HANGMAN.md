@@ -1,79 +1,113 @@
-# Word Hunt — EF101-P01
+# Word Hunt
 
-A browser-based Hangman game built with HTML, CSS, vanilla JavaScript, FastAPI and Neon PostgreSQL.
+A browser-based word game built with HTML, CSS, vanilla JavaScript, Vercel Node.js Functions, and Neon PostgreSQL.
 
-## Word bank and difficulty
+## Runtime architecture
 
-- The source vocabulary is `data/common_words.txt` (currently 5,441 screened English words).
-- The bank excludes a conservative list of political vocabulary and inappropriate terms. Screening is not a guarantee that every word is suitable in every context; keep reviewing new candidates before release.
-- `scripts/datamuse_candidates.py` queries Datamuse `/words` using meaning-like (`ml`) seeds and definition/part-of-speech metadata (`md=dp`). It writes a review queue only; Datamuse is a word-finding API, not a moderation service, and its suggestions are never automatically playable. Datamuse is credited here: [Datamuse API](https://www.datamuse.com/api/).
-- Datamuse documents that requests are currently keyless, with an API key required beginning **January 1, 2027**. Recheck its documentation and configure the key according to its published authentication instructions before continuing API requests after that date.
-- On first use, and whenever `WORD_BANK_VERSION` changes, the backend validates and imports playable words into PostgreSQL's `words` table.
-- The importer keeps alphabetic words of 4–20 letters, removes duplicates, assigns a difficulty by length, and blocks a list of known acronyms, brands, proper names and malformed fragments (including `ibm`, `amd`, `usc`, `trembl` and `struct`). This improves the list but does not guarantee every remaining word is familiar; the blocklist can be extended when new bad examples are found.
-- The browser never receives the secret word during an active round.
+- Frontend: static HTML, CSS, and vanilla JavaScript in `public/`.
+- API: one JavaScript Vercel catch-all function at `api/[...route].js`.
+- Database: Neon PostgreSQL, accessed through `@neondatabase/serverless`.
+- Runtime: Node.js 20 or newer. There is no Python runtime or Python dependency.
+- Game answers, validation, scoring, player identity, and streaks remain server-authoritative.
+
+## Vocabulary bank
+
+- `data/curated_words.json` contains exactly 5,000 playable entries.
+- Each entry stores its word, length-based difficulty, a topic category, and optional definition/example/part-of-speech fields.
+- The bank is a first editorial screening pass based on the prior list, the existing exclusion list, additional suitability exclusions, and removal of many common verb inflections. It is not a claim that every entry has received an individual human review; continue reviewing the bank before treating it as a fully approved educational dictionary.
+- Current category tags include animals, arts, everyday, food, geography, nature, science, school, sports, technology, and general. In this initial release, 379 entries have a specific topical tag and 4,621 use the general category; that imbalance is documented rather than disguising uncertain classifications as precise topics. General is the fallback category for words without a confident topic tag.
+- Twenty-eight entries currently include locally reviewed definition/example clues, including explicit intended meanings for several ambiguous words such as `lead`. Other entries can use the dictionary lookup flow described below.
+- No Datamuse request is made during gameplay, and the Datamuse candidate script has been removed.
+- The word bank version is `curated-5000-v2` and is imported into PostgreSQL on the first API request after a bank-version change. The importer upserts the 5,000 entries and removes superseded rows from `words`; it does not delete players, authentication sessions, scores, streaks, or game sessions.
 
 Difficulty:
-- **Easy:** 4–5 letters; round reward 100 points; each wrong guess costs 10.
-- **Medium:** 6–8 letters; round reward 250 points; each wrong guess costs 20.
-- **Hard:** 9+ letters (the imported word bank supports up to 20 letters); round reward 500 points; each wrong guess costs 40.
+- **Easy:** 4–5 letters; 100 starting points; each wrong guess costs 10.
+- **Medium:** 6–8 letters; 250 starting points; each wrong guess costs 20.
+- **Hard:** 9+ letters; 500 starting points; each wrong guess costs 40.
+- Each round allows six incorrect guesses.
+
+## Hint providers and attribution
+
+The hint endpoint is separate from the letter-guess endpoint. A letter guess does not call either dictionary provider.
+
+1. **Primary: Free Dictionary API** — `https://api.dictionaryapi.dev/`. The backend requests English definitions, examples, and parts of speech.
+2. **Fallback: FreeDictionaryAPI.com** — `https://freedictionaryapi.com/`. It is queried if the primary provider does not return a usable definition. Its API content is sourced from **Wiktionary**.
+3. **Local fallback:** a small set of reviewed clues is stored in the JavaScript backend; approved word-bank entries can also carry a definition and example in PostgreSQL.
+
+The backend removes a definition/example if it contains the answer itself, applies a 2.5-second timeout to each external provider, and caches successful hints in memory for the lifetime of a warm function instance. The cache is not shared between separate serverless instances.
+
+Difficulty-adjusted clues:
+- **Easy:** definition plus an example when available.
+- **Medium:** definition.
+- **Hard:** part of speech.
+
+The browser asks for a hint when a round starts and again when the result dialog opens. The in-memory cache can prevent the second request from repeating the provider lookups on the same warm instance. If no usable definition is available, the game reports that honestly rather than inventing a clue.
+
+**Wiktionary is not called as a separate third API.** The game calls FreeDictionaryAPI.com, which uses Wiktionary as a content source. Attribution links remain in the page footer.
+
+## Accounts and authentication
+
+- Public player names are shared identities.
+- Protected accounts require a password of at least eight characters, including one uppercase letter and one number.
+- Passwords use salted PBKDF2-HMAC-SHA256 with 310,000 iterations.
+- Bearer tokens are random, stored as SHA-256 hashes, and expire after 30 days.
+- Protected game sessions require the matching account token.
+- The browser stores the bearer token in session storage.
 
 ## Scoring, leaderboard and streaks
 
-- Each round starts with its difficulty's reward available.
-- Every incorrect guess subtracts the level's penalty from that round only. The round value is clamped at zero and never becomes negative.
-- On a win, the remaining round value is added to the player's persistent lifetime score.
-- On a loss, the round value is discarded and the player's lifetime score is unchanged. A failed round therefore cannot erase previously earned points.
-- The leaderboard has two sections: **Public** (shown first by default) and **Verified**. Public names are shared identities; anyone may play under an available public name. Verified names belong to password-protected accounts.
-- Protected accounts require a name and password of at least 8 characters, including at least one uppercase letter and one number. Passwords are salted and hashed with PBKDF2-HMAC-SHA256; the browser stores only a short-lived bearer token in session storage. Protected game sessions require the matching account token.
-- A name already created as Public cannot later be claimed as Verified. Register the protected name before anyone starts a Public game with it.
-- Sign-in sessions expire after 30 days. There is no email-based password reset; losing the password means the account cannot currently be recovered.
-- The leaderboard sorts players within each section by lifetime score, then highest streak, then name. It shows the player's highest streak with a fire icon and the current streak. Streaks are overall across all difficulties, not separate per level; no single difficulty is implied by the streak count.
-- Each won word increments the overall current streak. A lost word resets the current streak to zero. Ending a round early leaves it unchanged. The highest streak is stored permanently.
-- The scoring migration preserves the previous leaderboard's best completed score as the player's starting lifetime score. Old completed sessions are marked migrated so they are not counted again.
+- Each round starts with its difficulty's reward.
+- Incorrect guesses reduce only the current round's score, never below zero.
+- A win adds the remaining round score to the player's lifetime score.
+- A loss discards the round score and resets the current streak; lifetime points remain unchanged.
+- The leaderboard separates Public and Verified players and sorts by lifetime score, highest streak, then name.
+- Each win increments the overall current streak. A loss resets it. Abandoning a round leaves it unchanged.
 
-## Game flow
+## API routes
 
-1. Player enters a name and selects a difficulty.
-2. FastAPI finds or creates the player, selects a random word from PostgreSQL, and creates a game session.
-3. Each letter is submitted to `/api/guess`; the backend validates it, updates guesses and mistakes, calculates the current round value, and checks win/loss.
-4. A win commits the round value to lifetime points and updates streaks. A loss discards that round's points and resets the current streak.
-5. A large result dialog appears for both outcomes. It reveals the word, retrieves a definition from the free Dictionary API, and offers **Continue** after a win or **Try again** after a loss.
-6. Difficulty controls the clue: Easy shows a definition plus an example when available; Medium shows a dictionary definition; Hard shows a part-of-speech clue. The hint endpoint tries Free Dictionary API first and FreeDictionaryAPI.com (Wiktionary-backed) if the first provider has no usable definition, then uses reviewed offline clues for supported words. It never invents a clue from the answer's length or first letter. If neither provider nor offline clues can supply a reliable definition, the game says so instead of pretending a generic sentence is a hint.
-7. **End game** abandons the active round without counting it as a loss, changing lifetime points, or resetting the streak. The player can then change their name or difficulty and start another round.
-8. Correct letters trigger a small celebration animation. The platform, beam, post and diagonal brace stay fixed and visible. Six figure parts are drawn progressively: head, torso, left arm, right arm, left leg and right leg. There is no rope.
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/api/health` | Database and word/player counts |
+| POST | `/api/auth/register` | Create protected account |
+| POST | `/api/auth/login` | Sign in |
+| POST | `/api/auth/logout` | Revoke bearer token |
+| GET | `/api/new-game` | Create a round |
+| POST | `/api/guess` | Submit one letter |
+| GET | `/api/leaderboard` | Read lifetime leaderboard |
+| POST | `/api/end-game/:session_id` | Abandon active round |
+| GET | `/api/hint/:session_id` | Retrieve word hint |
 
-## Data model
+## Database model
 
-- `words`: word text and difficulty.
-- `players`: normalized player identity, account type (`public` or `protected`), optional password hash, lifetime score, current streak and highest streak.
-- `player_auth_sessions`: hashed bearer tokens and expiry times for protected accounts.
-- `game_sessions`: secret answer, difficulty, guesses, mistake count, status, round score, player link and score-commit flag.
-- `word_bank_meta`: imported word-bank version.
-- `schema_migrations`: one-time migrations, including preservation of existing leaderboard scores.
-
-## Manual verification checklist
-
-- [ ] Start Easy, Medium and Hard rounds and confirm word lengths match the selected level.
-- [ ] Confirm `ibm`, `amd`, `usc`, `trembl` and `struct` are not selected after the word bank is re-imported.
-- [ ] Make a wrong guess at each level and confirm the round value drops by 10, 20 or 40 without going below zero.
-- [ ] Win a word with no mistakes and confirm +100, +250 or +500 is added to lifetime points.
-- [ ] Win after mistakes and confirm only the remaining round value is added.
-- [ ] Lose a word and confirm lifetime points remain unchanged and current streak resets.
-- [ ] Win consecutive words and confirm current and highest streaks update correctly.
-- [ ] Confirm the win popup has **Continue**, the loss popup has **Try again**, and both show the word's meaning.
-- [ ] Confirm correct guesses show a party-popper celebration.
-- [ ] Refresh the page and confirm lifetime scores and highest streaks persist.
-- [ ] Verify the fixed stand, beam and diagonal brace remain visible and all six body parts appear in order.
-- [ ] Create a protected account, sign out, and confirm its name cannot start a game without signing in.
-- [ ] Confirm a Public name cannot be registered as Verified after it has been used publicly.
-- [ ] Confirm Public and Verified leaderboard sections render separately, with Public first.
+- `words`: word, difficulty, category, definition, example, and part of speech.
+- `players`: normalized identity, account type, optional password hash, lifetime score, current streak, and highest streak.
+- `player_auth_sessions`: hashed bearer tokens and expiry times.
+- `game_sessions`: secret answer, difficulty, guessed letters, wrong count, status, round score, player link, and score-commit flag.
+- `word_bank_meta`: current imported vocabulary version.
+- `schema_migrations`: retained legacy migration ledger; the JavaScript migration does not run the previous destructive fair-start resets.
 
 ## Deployment
 
 1. Set the Vercel project root to the repository root.
-2. Set `DATABASE_URL` in Vercel Environment Variables for Preview and Production. Use the Neon connection string and enable SSL.
-3. Deploy and check `/api/health`; it should report a connected database and at least 5,000 words.
-4. The first database initialization applies a one-time fair-start migration that deletes the previous player names, scores, and game sessions; it keeps the word bank. Register the first protected account promptly after deployment if you want to reserve that name before it is used publicly.
-5. Word hints try the free, no-key Free Dictionary API (`https://dictionaryapi.dev/`) first, then FreeDictionaryAPI.com (`https://freedictionaryapi.com/`, sourced from Wiktionary) when no usable definition is returned. Each request has a short timeout, and the game has reviewed offline clues for selected common words. The page credits FreeDictionaryAPI.com and Wiktionary in the footer. Neither provider documents a guaranteed uptime; if both are unavailable and no offline clue exists, the game shows an honest unavailable-clue message rather than a fake first-letter clue.
+2. Set `DATABASE_URL` in Vercel Environment Variables for Preview and Production. Use the Neon connection string with SSL enabled.
+3. Install dependencies with `npm install`.
+4. Deploy to Vercel. The first API request creates any missing tables/columns and imports the new vocabulary version.
+5. Check `/api/health`; it should report a connected database and 5,000 words.
+6. Test registration/login, a round at each difficulty, correct and incorrect guesses, win/loss scoring, streaks, leaderboard sections, sign-out, and round abandonment.
 
-Never commit database credentials. Keep `DATABASE_URL` in Vercel Environment Variables, not frontend code.
+The JavaScript migration intentionally does not execute the old `final-fair-reset-v2` or `fair-start-auth-v1` data deletion logic. Existing players and game history are preserved.
+
+## Manual verification checklist
+
+- [ ] Confirm `/api/health` reports 5,000 words after deployment.
+- [ ] Start Easy, Medium, and Hard rounds and verify word lengths.
+- [ ] Verify the secret word is not returned before a round ends.
+- [ ] Verify six wrong guesses end a round.
+- [ ] Verify wrong guesses reduce only the round score by 10, 20, or 40.
+- [ ] Verify a win adds the remaining round score exactly once.
+- [ ] Verify a loss leaves lifetime points unchanged and resets the current streak.
+- [ ] Verify ending a round early does not count as a loss or reset the streak.
+- [ ] Create and sign into a protected account; verify protected names cannot be used without authentication.
+- [ ] Verify Public and Verified leaderboard sections.
+- [ ] Verify hints use local reviewed clues when available and the dictionary providers only from the hint endpoint.
+- [ ] Verify light and dark Typewriter appearances and confirm there is no theme-switching control.
