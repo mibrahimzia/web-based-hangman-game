@@ -280,9 +280,11 @@ async function handler(req,res) {
       const found=await client.query("SELECT p.name,p.total_score,p.highest_streak,p.current_streak,COALESCE(latest.difficulty,'easy') AS difficulty,p.account_type FROM players p LEFT JOIN LATERAL(SELECT gs.difficulty FROM game_sessions gs WHERE gs.player_id=p.id ORDER BY gs.id DESC LIMIT 1) latest ON TRUE WHERE p.total_score>0 OR p.highest_streak>0 ORDER BY p.total_score DESC,p.highest_streak DESC,p.name ASC LIMIT 100");
       return res.status(200).json(found.rows.map(row=>({player_name:row.name,score:row.total_score,highest_streak:row.highest_streak,current_streak:row.current_streak,difficulty:row.difficulty,verified:row.account_type==="protected",section:row.account_type==="protected"?"verified":"public"})));
     });
-    const endMatch=path.match(/^\/api\/end-game\/(\d+)$/);
-    if(endMatch&&method==="POST")return await withClient(async client=>{
-      const sessionId=Number(endMatch[1]);await client.query("BEGIN");
+    if(path==="/api/end-game"&&method==="POST")return await withClient(async client=>{
+
+      const sessionId=Number(url.searchParams.get("session_id"));
+      if(!Number.isInteger(sessionId)||sessionId<1)throw httpError(400,"A valid game session is required.");
+      await client.query("BEGIN");
       try {
         const owner=await client.query("SELECT player_id,status FROM game_sessions WHERE id=$1 FOR UPDATE",[sessionId]);
         if(!owner.rows[0])throw httpError(404,"Game session not found.");
@@ -292,8 +294,11 @@ async function handler(req,res) {
         return res.status(200).json(updated.rows[0]?{status:"abandoned",message:"Round ended. Your lifetime score and streak were kept."}:{status:owner.rows[0].status,message:"This round is already finished."});
       } catch(error){await client.query("ROLLBACK");throw error;}
     });
-    const hintMatch=path.match(/^\/api\/hint\/(\d+)$/);
-    if(hintMatch&&method==="GET")return await withClient(async client=>res.status(200).json(await hintFor(client,Number(hintMatch[1]),req)));
+    if(path==="/api/hint"&&method==="GET") {
+      const sessionId=Number(url.searchParams.get("session_id"));
+      if(!Number.isInteger(sessionId)||sessionId<1)throw httpError(400,"A valid game session is required.");
+      return await withClient(async client=>res.status(200).json(await hintFor(client,sessionId,req)));
+    }
     throw httpError(404,"API route not found.");
   } catch(error) {
     const status=Number(error.status)||(error.code==="23505"?409:500);
