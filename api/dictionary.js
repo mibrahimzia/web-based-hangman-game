@@ -2,25 +2,6 @@
 
 const PROVIDERS = [
   {
-    name: "dictionaryapi.dev",
-    url: word => "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word),
-    parse(data, word) {
-      const result = { definition: "", example: "", partOfSpeech: "" };
-      if (!Array.isArray(data)) return result;
-      for (const entry of data) {
-        for (const meaning of entry.meanings || []) {
-          if (!result.partOfSpeech && meaning.partOfSpeech) result.partOfSpeech = meaning.partOfSpeech;
-          for (const item of meaning.definitions || []) {
-            if (!result.definition) result.definition = clean(item.definition, word, 240);
-            if (!result.example) result.example = clean(item.example, word, 220);
-            if (result.definition) return result;
-          }
-        }
-      }
-      return result;
-    }
-  },
-  {
     name: "freedictionaryapi.com",
     url: word => "https://freedictionaryapi.com/api/v1/entries/en/" + encodeURIComponent(word),
     parse(data, word) {
@@ -45,6 +26,25 @@ const PROVIDERS = [
             }
           }
           if (result.definition) return result;
+        }
+      }
+      return result;
+    }
+  },
+  {
+    name: "dictionaryapi.dev",
+    url: word => "https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word),
+    parse(data, word) {
+      const result = { definition: "", example: "", partOfSpeech: "" };
+      if (!Array.isArray(data)) return result;
+      for (const entry of data) {
+        for (const meaning of entry.meanings || []) {
+          if (!result.partOfSpeech && meaning.partOfSpeech) result.partOfSpeech = meaning.partOfSpeech;
+          for (const item of meaning.definitions || []) {
+            if (!result.definition) result.definition = clean(item.definition, word, 240);
+            if (!result.example) result.example = clean(item.example, word, 220);
+            if (result.definition) return result;
+          }
         }
       }
       return result;
