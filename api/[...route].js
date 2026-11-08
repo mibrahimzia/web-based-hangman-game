@@ -177,7 +177,7 @@ async function handler(req,res) {
       const a=await client.query("SELECT COUNT(*)::int AS count FROM words"),b=await client.query("SELECT COUNT(*)::int AS count FROM players");
       return res.status(200).json({ok:true,database:"connected",words:a.rows[0].count,players:b.rows[0].count});
     });
-    if(path==="/api/auth/register"&&method==="POST") {
+    if(path==="/api/auth"&&method==="POST"&&url.searchParams.get("mode")==="register") {
       const body=await bodyOf(req),identity=normalizePlayerName(body.name);validatePassword(body.password);
       const passwordHash=await makePasswordHash(body.password);
       return await withClient(async client=>{
@@ -193,7 +193,7 @@ async function handler(req,res) {
         } catch(error){await client.query("ROLLBACK");if(error.code==="23505")throw httpError(409,"That protected name already exists. Sign in instead.");throw error;}
       });
     }
-    if(path==="/api/auth/login"&&method==="POST") {
+    if(path==="/api/auth"&&method==="POST"&&url.searchParams.get("mode")==="login") {
       const body=await bodyOf(req),identity=normalizePlayerName(body.name);
       if(typeof body.password!=="string")throw httpError(400,"Enter both player name and password.");
       return await withClient(async client=>{
@@ -204,7 +204,7 @@ async function handler(req,res) {
         return res.status(200).json({auth_token:token,player_name:row.name,verified:true});
       });
     }
-    if(path==="/api/auth/logout"&&method==="POST") {
+    if(path==="/api/auth"&&method==="POST"&&url.searchParams.get("mode")==="logout") {
       const token=tokenFrom(req);if(token)await withClient(client=>client.query("DELETE FROM player_auth_sessions WHERE token_hash=$1",[hash(token)]));
       return res.status(200).json({ok:true});
     }
