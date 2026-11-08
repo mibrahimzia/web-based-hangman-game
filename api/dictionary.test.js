@@ -8,40 +8,42 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
 
-test("parses dictionaryapi.dev definitions, examples, and part of speech", async () => {
-  const result = await lookupDictionary("apple", {
-    fetchImpl: async () => response(200, [{
-      meanings: [{ partOfSpeech: "noun", definitions: [{ definition: "A crisp fruit.", example: "She packed a crisp fruit." }] }]
-    }])
+test("uses FreeDictionaryAPI as the primary clue provider", async () => {
+  const result = await lookupDictionary("orbit", {
+    fetchImpl: async () => response(200, {
+      entries: [{ partOfSpeech: "noun", senses: [{
+        definition: "The curved path of one object around another.",
+        examples: ["The moon follows a curved path around Earth."]
+      }] }]
+    })
   });
-  assert.equal(result.definition, "A crisp fruit.");
-  assert.equal(result.example, "She packed a crisp fruit.");
+  assert.match(result.definition, /curved path/);
+  assert.match(result.example, /moon/);
   assert.equal(result.partOfSpeech, "noun");
-  assert.equal(result.source, "dictionaryapi.dev");
+  assert.equal(result.source, "freedictionaryapi.com");
+  assert.equal(result.diagnostics.length, 1);
 });
 
-test("falls back to FreeDictionaryAPI when the first provider has no entry", async () => {
+test("falls back to dictionaryapi.dev when FreeDictionaryAPI has no entry", async () => {
   let calls = 0;
-  const result = await lookupDictionary("orbit", {
+  const result = await lookupDictionary("apple", {
     fetchImpl: async () => {
       calls++;
       return calls === 1
         ? response(404, { title: "No Definitions Found" })
-        : response(200, { entries: [{ partOfSpeech: "noun", senses: [{ definition: "The curved path of one object around another." }] }] });
+        : response(200, [{
+          meanings: [{ partOfSpeech: "noun", definitions: [{ definition: "A crisp fruit." }] }]
+        }]);
     }
   });
   assert.equal(calls, 2);
-  assert.match(result.definition, /curved path/);
-  assert.equal(result.source, "freedictionaryapi.com");
+  assert.equal(result.definition, "A crisp fruit.");
+  assert.equal(result.source, "dictionaryapi.dev");
 });
 
 test("rejects empty, oversized, and self-referential definitions", async () => {
   const result = await lookupDictionary("apple", {
-    fetchImpl: async () => response(200, [{ meanings: [{ definitions: [
-      { definition: "" },
-      { definition: "An apple is a fruit." },
-      { definition: "x".repeat(241) }
-    ] }] }])
+    fetchImpl: async () => response(200, { entries: [{ senses: [{ definition: "An apple is a fruit." }, { definition: "x".repeat(241) }] }] })
   });
   assert.equal(result.definition, "");
   assert.equal(result.source, null);
@@ -49,15 +51,16 @@ test("rejects empty, oversized, and self-referential definitions", async () => {
 
 test("continues to the backup provider after malformed JSON", async () => {
   let calls = 0;
-  const result = await lookupDictionary("orbit", {
+  const result = await lookupDictionary("apple", {
     fetchImpl: async () => {
       calls++;
       if (calls === 1) return { ok: true, status: 200, json: async () => { throw new SyntaxError("bad json"); } };
-      return response(200, { entries: [{ senses: [{ definition: "A regular curved path through space." }] }] });
+      return response(200, [{ meanings: [{ definitions: [{ definition: "A crisp fruit." }] }] }]);
     }
   });
   assert.equal(calls, 2);
-  assert.match(result.definition, /curved path/);
+  assert.equal(result.definition, "A crisp fruit.");
+  assert.equal(result.source, "dictionaryapi.dev");
 });
 
 test("returns explicit diagnostics when providers fail", async () => {
