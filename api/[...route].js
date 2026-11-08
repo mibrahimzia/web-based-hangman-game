@@ -3,6 +3,7 @@ const { promisify } = require("node:util");
 const { Pool, neonConfig } = require("@neondatabase/serverless");
 const WebSocket = require("ws");
 const WORDS = require("../data/curated_words.json");
+const { lookupDictionary } = require("./dictionary");
 neonConfig.webSocketConstructor = WebSocket;
 const pbkdf2 = promisify(crypto.pbkdf2);
 const MAX_ATTEMPTS = 6;
@@ -139,44 +140,16 @@ async function hintFor(client, sessionId, req) {
   if (hintCache.has(cacheKey)) return hintCache.get(cacheKey);
   let definition = cleanText(row.definition, word, 240), example = cleanText(row.example, word, 220), pos = row.part_of_speech || null, source = definition ? "curated" : null;
   if (!definition) {
-    const providers = [
-      { name:"dictionaryapi.dev", url:"https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(word), parse(data) {
-        const defs=[], exs=[], poses=[];
-        for (const entry of Array.isArray(data) ? data : []) for (const meaning of entry.meanings || []) {
-          if (meaning.partOfSpeech && !poses.includes(meaning.partOfSpeech)) poses.push(meaning.partOfSpeech);
-          for (const item of meaning.definitions || []) {
-            const d=cleanText(item.definition,word,240), e=cleanText(item.example,word,220);
-            if(d&&!defs.includes(d))defs.push(d); if(e&&!exs.includes(e))exs.push(e);
-          }
-        }
-        return {defs,exs,poses};
-      }},
-      { name:"freedictionaryapi.com / Wiktionary", url:"https://freedictionaryapi.com/api/v1/entries/en/" + encodeURIComponent(word), parse(data) {
-        const defs=[], exs=[], poses=[];
-        for (const entry of data.entries || []) {
-          if(entry.partOfSpeech&&!poses.includes(entry.partOfSpeech))poses.push(entry.partOfSpeech);
-          for(const sense of entry.senses||[]) {
-            const d=cleanText(sense.definition,word,240); if(d&&!defs.includes(d))defs.push(d);
-            for(const item of sense.examples||[]){const e=cleanText(item,word,220);if(e&&!exs.includes(e))exs.push(e);}
-            for(const sub of sense.subsenses||[]) {
-              const sd=cleanText(sub.definition,word,240);if(sd&&!defs.includes(sd))defs.push(sd);
-              for(const item of sub.examples||[]){const e=cleanText(item,word,220);if(e&&!exs.includes(e))exs.push(e);}
-            }
-          }
-        }
-        return {defs,exs,poses};
-      }}
-    ];
-    for (const provider of providers) {
-      try {
-        const response = await fetch(provider.url,{headers:{"User-Agent":"WordHunt-EF101/2.0"},signal:AbortSignal.timeout(2500)});
-        if(!response.ok)continue;
-        const parsed=provider.parse(await response.json());
-        if(parsed.defs.length||parsed.poses.length) {
-          definition=parsed.defs[0]||"";example=parsed.exs[0]||"";pos=parsed.poses[0]||null;
-          if(definition){source=provider.name;break;}
-        }
-      } catch (error) { console.warn("Dictionary provider failed:", provider.name, error.name || "Error"); }
+    const dictionary = await lookupDictionary(word);
+    if (dictionary.definition) {
+      definition = dictionary.definition;
+      example = dictionary.example;
+      pos = dictionary.partOfSpeech || pos;
+      source = dictionary.source;
+      await client.query(
+        "UPDATE words SET definition=CASE WHEN definition IS NULL OR BTRIM(definition)='' THEN $1 ELSE definition END, example=CASE WHEN example IS NULL OR BTRIM(example)='' THEN $2 ELSE example END, part_of_speech=CASE WHEN part_of_speech IS NULL OR BTRIM(part_of_speech)='' THEN $3 ELSE part_of_speech END WHERE word=$4 AND difficulty=$5",
+        [definition, example || null, pos, word, difficulty]
+      );
     }
   }
   if(!definition && offlineHints[word]){[definition,example,pos]=offlineHints[word];source="offline";}
