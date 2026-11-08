@@ -1,8 +1,0 @@
-[project]
-name = "word-hunt"
-version = "1.0.0"
-requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.117.1",
-    "psycopg2-binary>=2.9.9",
-]
