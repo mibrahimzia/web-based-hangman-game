@@ -189,7 +189,7 @@ async function hintFor(client, sessionId, req) {
     pos = pos || null;
     source = "category-fallback";
   }
-  if(difficulty==="hard") hint=(pos||"Word").replace(/^./,c=>c.toUpperCase());
+  if(difficulty==="hard") hint=source==="category-fallback"?definition:(pos||"Word").replace(/^./,c=>c.toUpperCase());
   else if(difficulty==="medium") hint=definition;
   else hint=definition+(example?" Example: "+example:"");
   const response={hint,meaning:definition,part_of_speech:pos,hint_source:source,hint_attribution:"Dictionary definitions may come from dictionaryapi.dev or FreeDictionaryAPI.com, which uses Wiktionary content."};
