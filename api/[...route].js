@@ -131,7 +131,7 @@ const offlineHints = {
   network:["A group of connected people, computers, or things.","Devices use one to communicate.","noun"]
 };
 async function hintFor(client, sessionId, req) {
-  const result = await client.query("SELECT gs.word,gs.difficulty,gs.player_id,w.definition,w.example,w.part_of_speech FROM game_sessions gs LEFT JOIN words w ON w.word=gs.word WHERE gs.id=$1", [sessionId]);
+  const result = await client.query("SELECT gs.word,gs.difficulty,gs.player_id,w.category,w.definition,w.example,w.part_of_speech FROM game_sessions gs LEFT JOIN words w ON w.word=gs.word AND w.difficulty=gs.difficulty WHERE gs.id=$1", [sessionId]);
   const row = result.rows[0];
   if (!row) throw httpError(404, "Game session not found.");
   await enforceSessionOwner(client, row.player_id, req);
@@ -176,13 +176,22 @@ async function hintFor(client, sessionId, req) {
           definition=parsed.defs[0]||"";example=parsed.exs[0]||"";pos=parsed.poses[0]||null;
           if(definition){source=provider.name;break;}
         }
-      } catch {}
+      } catch (error) { console.warn("Dictionary provider failed:", provider.name, error.name || "Error"); }
     }
   }
   if(!definition && offlineHints[word]){[definition,example,pos]=offlineHints[word];source="offline";}
   let hint;
-  if(definition) hint=difficulty==="hard"?(pos||"Word").replace(/^./,c=>c.toUpperCase()):difficulty==="medium"?definition:definition+(example?" Example: "+example:"");
-  else {definition="A reliable definition could not be loaded for this word right now.";hint="No reliable clue is available right now. Please end this round and start another.";source="unavailable";}
+  if(!definition) {
+    const category = row.category && row.category !== "general" ? row.category : "general vocabulary";
+    definition = category === "general vocabulary"
+      ? "A general vocabulary word with " + word.length + " letters. Think about where you might encounter it in everyday reading."
+      : "A word connected with " + category + ". It has " + word.length + " letters; think of familiar examples from this topic.";
+    pos = pos || null;
+    source = "category-fallback";
+  }
+  if(difficulty==="hard") hint=(pos||"Word").replace(/^./,c=>c.toUpperCase());
+  else if(difficulty==="medium") hint=definition;
+  else hint=definition+(example?" Example: "+example:"");
   const response={hint,meaning:definition,part_of_speech:pos,hint_source:source,hint_attribution:"Dictionary definitions may come from dictionaryapi.dev or FreeDictionaryAPI.com, which uses Wiktionary content."};
   if(source!=="unavailable")hintCache.set(cacheKey,response);
   return response;
