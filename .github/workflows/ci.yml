@@ -28,6 +28,7 @@ jobs:
     steps:
       - name: Wait for Vercel deployment and verify health
         env:
+          BASE_URL: https://web-based-hangman-game.vercel.app
           HEALTH_URL: https://web-based-hangman-game.vercel.app/api/health
         run: |
           for attempt in $(seq 1 18); do
@@ -40,3 +41,14 @@ jobs:
           done
           echo "Production health check did not pass within 3 minutes."
           exit 1
+
+      - name: Verify a real game can load and save its clue
+        run: |
+          set -euo pipefail
+          game=$(curl --silent --show-error --fail "$BASE_URL/api/new-game?difficulty=easy&player_name=WordHunt%20CI")
+          echo "$game"
+          session_id=$(node -e 'const d=JSON.parse(process.argv[1]); if (!d.session_id) process.exit(1); process.stdout.write(String(d.session_id))' "$game")
+          hint=$(curl --silent --show-error --fail "$BASE_URL/api/hint?session_id=$session_id")
+          echo "$hint"
+          node -e 'const h=JSON.parse(process.argv[1]); if (!h.hint || !h.meaning || !h.hint_source) process.exit(1)' "$hint"
+          curl --silent --show-error --fail --request POST "$BASE_URL/api/end-game?session_id=$session_id" >/dev/null
