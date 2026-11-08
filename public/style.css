@@ -1,5 +1,4 @@
 @import url("https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Special+Elite&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
 :root{color-scheme:light;--page:#f3f7ef;--panel:#fffef9;--ink:#183b32;--muted:#637b70;--line:#dce8d8;--accent:#087f5b;--accent-strong:#066344;--accent-soft:#dff5e8;--good:#07865d;--bad:#d84d42;--sun:#f4b942;--sky:#bce8f4;--shadow:0 18px 45px #164e3b14;--lift:0 9px 22px #164e3b12}
 :root.theme-dark{color-scheme:dark;--page:#10231e;--panel:#19352c;--ink:#effcf3;--muted:#a6c5b5;--line:#315446;--accent:#52d6a0;--accent-strong:#8ae7bd;--accent-soft:#214c3b;--good:#69e2ad;--bad:#ff8a7f;--sun:#f4c65d;--sky:#244d57;--shadow:0 18px 45px #0003;--lift:0 9px 22px #0002}
 :root.theme-light{color-scheme:light;--page:#f3f7ef;--panel:#fffef9;--ink:#183b32;--muted:#637b70;--line:#dce8d8;--accent:#087f5b;--accent-strong:#066344;--accent-soft:#dff5e8;--good:#07865d;--bad:#d84d42;--sun:#f4b942;--sky:#bce8f4;--shadow:0 18px 45px #164e3b14;--lift:0 9px 22px #164e3b12}
