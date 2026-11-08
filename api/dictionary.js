@@ -6,7 +6,8 @@ const PROVIDERS = [
     url: word => "https://freedictionaryapi.com/api/v1/entries/en/" + encodeURIComponent(word),
     parse(data, word) {
       const result = { definition: "", example: "", partOfSpeech: "" };
-      for (const entry of (data && data.entries) || []) {
+      const entries = data && Array.isArray(data.entries) ? data.entries : [];
+      for (const entry of entries) {
         if (!result.partOfSpeech && entry.partOfSpeech) result.partOfSpeech = entry.partOfSpeech;
         for (const sense of entry.senses || []) {
           if (!result.definition) result.definition = clean(sense.definition, word, 240);
