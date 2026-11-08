@@ -15,10 +15,10 @@ A browser-based word game built with HTML, CSS, vanilla JavaScript, Vercel Node.
 - `data/curated_words.json` contains exactly 5,000 playable entries.
 - Each entry stores its word, length-based difficulty, a topic category, and optional definition/example/part-of-speech fields.
 - The bank is a first editorial screening pass based on the prior list, the existing exclusion list, additional suitability exclusions, and removal of many common verb inflections. It is not a claim that every entry has received an individual human review; continue reviewing the bank before treating it as a fully approved educational dictionary.
-- Current category tags include animals, arts, everyday, food, geography, nature, science, school, sports, technology, and general. General is the fallback category for words without a confident topic tag.
-- Thirteen entries currently include locally reviewed definition/example clues. Other entries can use the dictionary lookup flow described below.
+- Current category tags include animals, arts, everyday, food, geography, nature, science, school, sports, technology, and general. In this initial release, 379 entries have a specific topical tag and 4,621 use the general category; that imbalance is documented rather than disguising uncertain classifications as precise topics. General is the fallback category for words without a confident topic tag.
+- Twenty-eight entries currently include locally reviewed definition/example clues, including explicit intended meanings for several ambiguous words such as `lead`. Other entries can use the dictionary lookup flow described below.
 - No Datamuse request is made during gameplay, and the Datamuse candidate script has been removed.
-- The word bank is imported into PostgreSQL on the first API request after a bank-version change. The importer upserts the 5,000 entries and removes superseded rows from `words`; it does not delete players, authentication sessions, scores, streaks, or game sessions.
+- The word bank version is `curated-5000-v2` and is imported into PostgreSQL on the first API request after a bank-version change. The importer upserts the 5,000 entries and removes superseded rows from `words`; it does not delete players, authentication sessions, scores, streaks, or game sessions.
 
 Difficulty:
 - **Easy:** 4–5 letters; 100 starting points; each wrong guess costs 10.
