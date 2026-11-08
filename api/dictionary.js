@@ -53,8 +53,8 @@ const PROVIDERS = [
 ];
 
 function clean(value, word, limit) {
-  const text = String(value || "").replace(/\\s+/g, " ").trim();
-  if (!text || text.length > limit || new RegExp("\\\\b" + word + "\\\\b", "i").test(text)) return "";
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text || text.length > limit || new RegExp("\\b" + word + "\\b", "i").test(text)) return "";
   return text;
 }
 
@@ -75,12 +75,7 @@ async function lookupDictionary(word, options = {}) {
       }
       const data = await response.json();
       const parsed = provider.parse(data, word);
-      diagnostics.push({
-        provider: provider.name,
-        status: response.status,
-        elapsedMs: Date.now() - started,
-        result: parsed.definition ? "definition_found" : "no_usable_definition"
-      });
+      diagnostics.push({ provider: provider.name, status: response.status, elapsedMs: Date.now() - started, result: parsed.definition ? "definition_found" : "no_usable_definition" });
       if (parsed.definition) {
         for (const item of diagnostics) console.info("[dictionary]", JSON.stringify(item));
         return { ...parsed, source: provider.name, diagnostics };
