@@ -54,3 +54,14 @@ jobs:
           echo "$hint"
           node -e 'const h=JSON.parse(process.argv[1]); if (!h.hint || !h.meaning || !h.hint_source) process.exit(1)' "$hint"
           curl --silent --show-error --fail --request POST "$BASE_URL/api/end-game?session_id=$session_id" >/dev/null
+
+      - name: Verify protected account registration and logout
+        env:
+          BASE_URL: https://web-based-hangman-game.vercel.app
+          TEST_ACCOUNT_NAME: WordHuntCI${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          payload=$(node -e 'process.stdout.write(JSON.stringify({name:process.env.TEST_ACCOUNT_NAME,password:"TestPass123"}))')
+          registered=$(curl --silent --show-error --fail --request POST "$BASE_URL/api/auth?mode=register" --header "Content-Type: application/json" --data "$payload")
+          token=$(node -e 'const d=JSON.parse(process.argv[1]); if (!d.auth_token || !d.verified) process.exit(1); process.stdout.write(d.auth_token)' "$registered")
+          curl --silent --show-error --fail --request POST "$BASE_URL/api/auth?mode=logout" --header "Authorization: Bearer $token" >/dev/null
