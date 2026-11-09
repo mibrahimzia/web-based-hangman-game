@@ -11,7 +11,7 @@ function response(status, body) {
 test("uses Datamuse as the primary clue provider", async () => {
   const result = await lookupDictionary("orbit", {
     fetchImpl: async url => {
-      assert.match(url, /api\\.datamuse\\.com\\/words/);
+      assert.match(url, /api\.datamuse\.com\/words/);
       return response(200, [{ word: "orbit", defs: ["n\\tThe curved path of one object around another."], tags: ["n", "pron:AO1 R B IH0 T", "f:2.4"], numSyllables: 2 }]);
     }
   });
@@ -53,12 +53,12 @@ test("continues to the backup provider after malformed JSON", async () => {
     fetchImpl: async () => {
       calls++;
       if (calls === 1) return { ok: true, status: 200, json: async () => { throw new SyntaxError("bad json"); } };
-      return response(200, [{ meanings: [{ definitions: [{ definition: "A crisp fruit." }] }] }]);
+      return response(200, { entries: [{ senses: [{ definition: "A crisp fruit." }] }] });
     }
   });
   assert.equal(calls, 2);
   assert.equal(result.definition, "A crisp fruit.");
-  assert.equal(result.source, "dictionaryapi.dev");
+  assert.equal(result.source, "freedictionaryapi.com");
 });
 
 test("returns explicit diagnostics when providers fail", async () => {
