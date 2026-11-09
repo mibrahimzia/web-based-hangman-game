@@ -80,7 +80,7 @@ const PROVIDERS = [
 
 function clean(value, word, limit) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (!text || text.length > limit || new RegExp("\\b" + word + "\\b", "i").test(text) || /\\b(colloquial|slang|offensive|vulgar|derogatory|archaic|obsolete)\\b/i.test(text)) return "";
+  if (!text || text.length > limit || new RegExp("\\b" + word + "\\b", "i").test(text) || /\b(colloquial|slang|offensive|vulgar|derogatory|archaic|obsolete)\b/i.test(text)) return "";
   return text;
 }
 
