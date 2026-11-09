@@ -17,7 +17,7 @@ A browser-based word game built with HTML, CSS, vanilla JavaScript, Vercel Node.
 - The bank is a first editorial screening pass based on the prior list, the existing exclusion list, additional suitability exclusions, and removal of many common verb inflections. It is not a claim that every entry has received an individual human review; continue reviewing the bank before treating it as a fully approved educational dictionary.
 - Current category tags include animals, arts, everyday, food, geography, nature, science, school, sports, technology, and general. In this initial release, 379 entries have a specific topical tag and 4,621 use the general category; that imbalance is documented rather than disguising uncertain classifications as precise topics. General is the fallback category for words without a confident topic tag.
 - Twenty-eight entries currently include locally reviewed definition/example clues, including explicit intended meanings for several ambiguous words such as `lead`. Other entries can use the dictionary lookup flow described below.
-- No Datamuse request is made during gameplay, and the Datamuse candidate script has been removed.
+- Datamuse is called only when a round requests a hint; it does not select playable answers or run on letter guesses.
 - The word bank version is `curated-5000-v2` and is imported into PostgreSQL on the first API request after a bank-version change. The importer upserts the 5,000 entries and removes superseded rows from `words`; it does not delete players, authentication sessions, scores, streaks, or game sessions.
 
 Difficulty:
@@ -28,22 +28,25 @@ Difficulty:
 
 ## Hint providers and attribution
 
-The hint endpoint is separate from the letter-guess endpoint. A letter guess does not call either dictionary provider.
+The hint endpoint is separate from the letter-guess endpoint. A letter guess does not call any dictionary provider.
 
-1. **Primary: Free Dictionary API** — `https://api.dictionaryapi.dev/`. The backend requests English definitions, examples, and parts of speech.
-2. **Fallback: FreeDictionaryAPI.com** — `https://freedictionaryapi.com/`. It is queried if the primary provider does not return a usable definition. Its API content is sourced from **Wiktionary**.
-3. **Local fallback:** a small set of reviewed clues is stored in the JavaScript backend; approved word-bank entries can also carry a definition and example in PostgreSQL.
+1. **Primary: Datamuse API** — `https://api.datamuse.com/words`. The backend requests an exact spelling match and metadata using `qe=sp&md=dpsrf&ipa=1`: definitions, parts of speech, syllable count, pronunciation, and word frequency. Datamuse currently requires no API key and is read-only. Its definitions are sourced from Wiktionary and WordNet.
+2. **Fallback: FreeDictionaryAPI.com** — `https://freedictionaryapi.com/`. It supplies definitions, examples, and parts of speech when Datamuse does not return a usable definition. Its content uses Wiktionary.
+3. **Final fallback: dictionaryapi.dev** — `https://api.dictionaryapi.dev/`, used when neither earlier provider returns a usable definition.
+4. **Local fallback:** reviewed clues in the backend and any definition/example already stored in PostgreSQL.
 
-The backend removes a definition/example if it contains the answer itself, applies a 2.5-second timeout to each external provider, and caches successful hints in memory for the lifetime of a warm function instance. The cache is not shared between separate serverless instances.
+Successful metadata is stored in the `words` table, so future rounds can reuse it without another external request. The database stores definition, example, part of speech, syllable count, pronunciation, and frequency. Provider calls occur only from the hint endpoint, not during letter guesses.
+
+The backend filters self-referential or oversized definitions and applies a four-second timeout per provider. Successful hints are also cached in memory for the lifetime of a warm function instance; that cache is not shared between serverless instances.
 
 Difficulty-adjusted clues:
 - **Easy:** definition plus an example when available.
 - **Medium:** definition.
 - **Hard:** part of speech.
 
-The browser asks for a hint when a round starts and again when the result dialog opens. The in-memory cache can prevent the second request from repeating the provider lookups on the same warm instance. If no usable definition is available, the game reports that honestly rather than inventing a clue.
+Datamuse's API documentation announces that API keys will become mandatory on **February 1, 2027**, with a limit of 100,000 requests per day per key. The project currently uses the public no-key endpoint; before that date, obtain a key and configure it if required by Datamuse. Do not put a future API key in browser code.
 
-**Wiktionary is not called as a separate third API.** The game calls FreeDictionaryAPI.com, which uses Wiktionary as a content source. Attribution links remain in the page footer.
+The game credits Datamuse and its underlying lexical sources in this documentation. Wiktionary is not called as a separate runtime API.
 
 ## Accounts and authentication
 
@@ -68,18 +71,18 @@ The browser asks for a hint when a round starts and again when the result dialog
 | Method | Route | Purpose |
 |---|---|---|
 | GET | `/api/health` | Database and word/player counts |
-| POST | `/api/auth/register` | Create protected account |
-| POST | `/api/auth/login` | Sign in |
-| POST | `/api/auth/logout` | Revoke bearer token |
+| POST | `/api/auth?mode=register` | Create protected account |
+| POST | `/api/auth?mode=login` | Sign in |
+| POST | `/api/auth?mode=logout` | Revoke bearer token |
 | GET | `/api/new-game` | Create a round |
 | POST | `/api/guess` | Submit one letter |
 | GET | `/api/leaderboard` | Read lifetime leaderboard |
-| POST | `/api/end-game/:session_id` | Abandon active round |
-| GET | `/api/hint/:session_id` | Retrieve word hint |
+| POST | `/api/end-game?session_id={id}` | Abandon active round |
+| GET | `/api/hint?session_id={id}` | Retrieve word hint |
 
 ## Database model
 
-- `words`: word, difficulty, category, definition, example, and part of speech.
+- `words`: word, difficulty, category, definition, example, part of speech, syllable count, pronunciation, and frequency.
 - `players`: normalized identity, account type, optional password hash, lifetime score, current streak, and highest streak.
 - `player_auth_sessions`: hashed bearer tokens and expiry times.
 - `game_sessions`: secret answer, difficulty, guessed letters, wrong count, status, round score, player link, and score-commit flag.
