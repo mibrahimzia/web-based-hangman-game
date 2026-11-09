@@ -5,7 +5,7 @@ A browser-based Hangman-style word game built with vanilla JavaScript, Vercel No
 - **Frontend:** static HTML, CSS, and JavaScript in `public/`.
 - **Backend:** JavaScript serverless API in `api/[...route].js`.
 - **Database:** Neon PostgreSQL using `@neondatabase/serverless`.
-- **Vocabulary:** 5,000 entries in `data/curated_words.json`; no runtime Datamuse requests.
+- **Vocabulary:** 5,000 entries in `data/curated_words.json`; Datamuse enriches selected words when a hint is requested; the curated bank remains the source of playable answers.
 - **Theme:** Typewriter is the only visual theme, with a light/dark toggle.
 
 See [README-HANGMAN.md](README-HANGMAN.md) for API routes, database schema, scoring rules, word-bank notes, hint-provider behavior, attribution, and deployment verification.
