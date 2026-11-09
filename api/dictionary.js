@@ -7,7 +7,7 @@ const PROVIDERS = [
     parse(data, word) {
       const result = { definition: "", example: "", partOfSpeech: "", syllableCount: null, pronunciation: "", frequency: null };
       if (!Array.isArray(data)) return result;
-      const item = data.find(entry => String(entry.word || "").toLowerCase() === word.toLowerCase()) || data[0];
+      const item = data.find(entry => String(entry.word || "").toLowerCase() === word.toLowerCase());
       if (!item) return result;
       for (const entry of item.defs || []) {
         const definition = String(entry).replace(/^[^\t]+\t/, "").trim();
