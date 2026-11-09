@@ -76,3 +76,19 @@ test("does not leak the requested word in diagnostic records", async () => {
   });
   assert.equal(JSON.stringify(result.diagnostics).includes("privateword"), false);
 });
+
+test("rejects colloquial and outdated dictionary senses", async () => {
+  const result = await lookupDictionary("jane", {
+    fetchImpl: async () => response(200, [{ word: "jane", defs: ["n\\t(colloquial) used as a placeholder name for any woman."], tags: ["n"] }])
+  });
+  assert.equal(result.definition, "");
+  assert.equal(result.source, null);
+});
+
+test("does not accept a non-exact Datamuse spelling result", async () => {
+  const result = await lookupDictionary("jane", {
+    fetchImpl: async () => response(200, [{ word: "janes", defs: ["n\\tA plural form."], tags: ["n"] }])
+  });
+  assert.equal(result.definition, "");
+  assert.equal(result.source, null);
+});
