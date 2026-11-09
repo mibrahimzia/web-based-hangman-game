@@ -12,7 +12,7 @@ test("uses Datamuse as the primary clue provider", async () => {
   const result = await lookupDictionary("orbit", {
     fetchImpl: async url => {
       assert.match(url, /api\.datamuse\.com\/words/);
-      return response(200, [{ word: "orbit", defs: ["n\\tThe curved path of one object around another."], tags: ["n", "pron:AO1 R B IH0 T", "f:2.4"], numSyllables: 2 }]);
+      return response(200, [{ word: "orbit", defs: ["n\tThe curved path of one object around another."], tags: ["n", "pron:AO1 R B IH0 T", "f:2.4"], numSyllables: 2 }]);
     }
   });
   assert.match(result.definition, /curved path/);
