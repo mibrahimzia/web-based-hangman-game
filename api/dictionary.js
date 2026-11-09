@@ -2,6 +2,31 @@
 
 const PROVIDERS = [
   {
+    name: "datamuse",
+    url: word => "https://api.datamuse.com/words?sp=" + encodeURIComponent(word) + "&qe=sp&md=dpsrf&ipa=1&max=1",
+    parse(data, word) {
+      const result = { definition: "", example: "", partOfSpeech: "", syllableCount: null, pronunciation: "", frequency: null };
+      if (!Array.isArray(data)) return result;
+      const item = data.find(entry => String(entry.word || "").toLowerCase() === word.toLowerCase()) || data[0];
+      if (!item) return result;
+      for (const entry of item.defs || []) {
+        const definition = String(entry).replace(/^[^\t]+\t/, "").trim();
+        result.definition = clean(definition, word, 240);
+        if (result.definition) break;
+      }
+      const tags = item.tags || [];
+      const pos = tags.find(tag => ["n", "v", "adj", "adv", "u"].includes(tag));
+      result.partOfSpeech = ({ n: "noun", v: "verb", adj: "adjective", adv: "adverb", u: "" })[pos] || "";
+      const pron = tags.find(tag => String(tag).startsWith("pron:"));
+      if (pron) result.pronunciation = String(pron).slice(5);
+      const freq = tags.find(tag => String(tag).startsWith("f:"));
+      if (freq && Number.isFinite(Number(String(freq).slice(2)))) result.frequency = Number(String(freq).slice(2));
+      if (Number.isInteger(item.numSyllables)) result.syllableCount = item.numSyllables;
+      return result;
+    }
+  },
+
+  {
     name: "freedictionaryapi.com",
     url: word => "https://freedictionaryapi.com/api/v1/entries/en/" + encodeURIComponent(word),
     parse(data, word) {
