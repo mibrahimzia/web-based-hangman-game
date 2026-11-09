@@ -45,6 +45,9 @@ async function ensureDatabase() {
       await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS definition TEXT");
       await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS example TEXT");
       await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS part_of_speech TEXT");
+      await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS syllable_count INTEGER");
+      await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS pronunciation TEXT");
+      await client.query("ALTER TABLE words ADD COLUMN IF NOT EXISTS frequency REAL");
       await client.query("CREATE UNIQUE INDEX IF NOT EXISTS words_word_difficulty_uidx ON words(word,difficulty)");
       await client.query("CREATE INDEX IF NOT EXISTS words_difficulty_length_idx ON words(difficulty,length(word))");
       const meta = await client.query("SELECT version FROM word_bank_meta WHERE id=1");
@@ -132,23 +135,26 @@ const offlineHints = {
   network:["A group of connected people, computers, or things.","Devices use one to communicate.","noun"]
 };
 async function hintFor(client, sessionId, req) {
-  const result = await client.query("SELECT gs.word,gs.difficulty,gs.player_id,w.category,w.definition,w.example,w.part_of_speech FROM game_sessions gs LEFT JOIN words w ON w.word=gs.word AND w.difficulty=gs.difficulty WHERE gs.id=$1", [sessionId]);
+  const result = await client.query("SELECT gs.word,gs.difficulty,gs.player_id,w.category,w.definition,w.example,w.part_of_speech,w.syllable_count,w.pronunciation,w.frequency FROM game_sessions gs LEFT JOIN words w ON w.word=gs.word AND w.difficulty=gs.difficulty WHERE gs.id=$1", [sessionId]);
   const row = result.rows[0];
   if (!row) throw httpError(404, "Game session not found.");
   await enforceSessionOwner(client, row.player_id, req);
   const word = row.word.toLowerCase(), difficulty = row.difficulty, cacheKey = word + ":" + difficulty;
   if (hintCache.has(cacheKey)) return hintCache.get(cacheKey);
-  let definition = cleanText(row.definition, word, 240), example = cleanText(row.example, word, 220), pos = row.part_of_speech || null, source = definition ? "curated" : null;
+  let definition = cleanText(row.definition, word, 240), example = cleanText(row.example, word, 220), pos = row.part_of_speech || null, syllableCount = row.syllable_count || null, pronunciation = row.pronunciation || "", frequency = row.frequency == null ? null : Number(row.frequency), source = definition ? "curated" : null;
   if (!definition) {
     const dictionary = await lookupDictionary(word);
     if (dictionary.definition) {
       definition = dictionary.definition;
       example = dictionary.example;
       pos = dictionary.partOfSpeech || pos;
+      syllableCount = dictionary.syllableCount || syllableCount;
+      pronunciation = dictionary.pronunciation || pronunciation;
+      frequency = dictionary.frequency == null ? frequency : dictionary.frequency;
       source = dictionary.source;
       await client.query(
-        "UPDATE words SET definition=CASE WHEN definition IS NULL OR BTRIM(definition)='' THEN $1 ELSE definition END, example=CASE WHEN example IS NULL OR BTRIM(example)='' THEN $2 ELSE example END, part_of_speech=CASE WHEN part_of_speech IS NULL OR BTRIM(part_of_speech)='' THEN $3 ELSE part_of_speech END WHERE word=$4 AND difficulty=$5",
-        [definition, example || null, pos, word, difficulty]
+        "UPDATE words SET definition=CASE WHEN definition IS NULL OR BTRIM(definition)='' THEN $1 ELSE definition END, example=CASE WHEN example IS NULL OR BTRIM(example)='' THEN $2 ELSE example END, part_of_speech=CASE WHEN part_of_speech IS NULL OR BTRIM(part_of_speech)='' THEN $3 ELSE part_of_speech END, syllable_count=COALESCE(syllable_count,$4), pronunciation=COALESCE(NULLIF(pronunciation,''),$5), frequency=COALESCE(frequency,$6) WHERE word=$7 AND difficulty=$8",
+        [definition, example || null, pos, syllableCount, pronunciation || null, frequency, word, difficulty]
       );
     }
   }
