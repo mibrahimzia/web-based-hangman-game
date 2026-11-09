@@ -171,7 +171,7 @@ async function hintFor(client, sessionId, req) {
   if(difficulty==="hard") hint=source==="category-fallback"?definition:(pos||"Word").replace(/^./,c=>c.toUpperCase());
   else if(difficulty==="medium") hint=definition;
   else hint=definition+(example?" Example: "+example:"");
-  const response={hint,meaning:definition,part_of_speech:pos,hint_source:source,hint_attribution:"Dictionary definitions may come from dictionaryapi.dev or FreeDictionaryAPI.com, which uses Wiktionary content."};
+  const response={hint,meaning:definition,part_of_speech:pos,syllable_count:syllableCount,pronunciation,frequency,hint_source:source,hint_attribution:"Datamuse definitions are sourced from Wiktionary and WordNet. FreeDictionaryAPI.com is used as a fallback and uses Wiktionary content."};
   if(source!=="unavailable")hintCache.set(cacheKey,response);
   return response;
 }
